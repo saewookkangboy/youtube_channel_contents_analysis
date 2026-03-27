@@ -12,7 +12,7 @@ export interface YouTubeVideoData {
 
 export async function fetchYouTubeVideoData(url: string, apiKey: string): Promise<YouTubeVideoData> {
   if (!apiKey) {
-    throw new Error('YouTube API 키가 없습니다.');
+    throw new Error("YouTube API Key is missing.");
   }
 
   let videoId = '';
@@ -33,15 +33,15 @@ export async function fetchYouTubeVideoData(url: string, apiKey: string): Promis
   }
 
   if (!videoId) {
-    throw new Error('URL에서 영상 ID를 찾을 수 없습니다.');
+    throw new Error("Could not extract Video ID from the provided URL.");
   }
 
   const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${apiKey}`);
-  if (!response.ok) throw new Error('영상 정보를 가져오지 못했습니다.');
+  if (!response.ok) throw new Error("Failed to fetch video details.");
   
   const data = await response.json();
   if (!data.items || data.items.length === 0) {
-    throw new Error('해당 영상을 찾을 수 없습니다.');
+    throw new Error("Video not found.");
   }
 
   const item = data.items[0];
@@ -74,7 +74,7 @@ export interface YouTubeChannelData {
 
 export async function fetchYouTubeChannelData(url: string, apiKey: string): Promise<YouTubeChannelData> {
   if (!apiKey) {
-    throw new Error('YouTube API 키가 없습니다.');
+    throw new Error("YouTube API Key is missing.");
   }
 
   let channelId = '';
@@ -92,7 +92,7 @@ export async function fetchYouTubeChannelData(url: string, apiKey: string): Prom
   // 2. Resolve handle to Channel ID if necessary
   if (!channelId && handle) {
     const searchRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=%40${handle}&key=${apiKey}`);
-    if (!searchRes.ok) throw new Error('채널 핸들 검색에 실패했습니다.');
+    if (!searchRes.ok) throw new Error("Failed to search for channel handle.");
     const searchData = await searchRes.json();
     if (searchData.items && searchData.items.length > 0) {
       channelId = searchData.items[0].snippet.channelId;
@@ -100,16 +100,16 @@ export async function fetchYouTubeChannelData(url: string, apiKey: string): Prom
   }
 
   if (!channelId) {
-    throw new Error('URL에서 채널 ID를 확인할 수 없습니다.');
+    throw new Error("Could not resolve Channel ID from the provided URL.");
   }
 
   // 3. Fetch Channel Statistics and Uploads Playlist ID
   const channelRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics,contentDetails,snippet&id=${channelId}&key=${apiKey}`);
-  if (!channelRes.ok) throw new Error('채널 정보를 가져오지 못했습니다.');
+  if (!channelRes.ok) throw new Error("Failed to fetch channel details.");
   const channelData = await channelRes.json();
   
   if (!channelData.items || channelData.items.length === 0) {
-    throw new Error('해당 채널을 찾을 수 없습니다.');
+    throw new Error("Channel not found.");
   }
 
   const channel = channelData.items[0];
@@ -119,7 +119,7 @@ export async function fetchYouTubeChannelData(url: string, apiKey: string): Prom
 
   const result: YouTubeChannelData = {
     channelName,
-    subscriberCount: stats.subscriberCount || '비공개',
+    subscriberCount: stats.subscriberCount || "Hidden",
     totalViews: stats.viewCount || "0",
     videoCount: stats.videoCount || "0",
     recentVideos: []
