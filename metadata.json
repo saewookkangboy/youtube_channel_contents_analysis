@@ -1,0 +1,5 @@
+{
+  "name": "YouTube Channel Insight",
+  "description": "Analyzes YouTube channels using Gemini AI and Google Search to provide deep insights into content, audience, and trends.",
+  "requestFramePermissions": []
+}
