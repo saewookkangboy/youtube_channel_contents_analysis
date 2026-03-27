@@ -1,23 +1,13 @@
-import { GoogleGenAI } from "@google/genai";
+import { buildChannelFactPacket, buildVideoFactPacket } from "../lib/analysisPipeline";
+import {
+  buildChannelKoreanSemanticGroundingBlock,
+  buildVideoKoreanSemanticGroundingBlock,
+} from "../lib/koreanSemanticEmbedding";
 import { buildGeminiApiUsageSummary, type GeminiApiUsageSummary } from "../lib/geminiApiUsage";
+import { getGeminiClient } from "./geminiClient";
 import { YouTubeChannelData, YouTubeVideoData } from "./youtubeApiService";
 
-export function isGeminiApiKeyConfigured(): boolean {
-  const key = process.env.GEMINI_API_KEY;
-  return typeof key === 'string' && key.trim().length > 0;
-}
-
-let geminiClient: GoogleGenAI | null = null;
-
-function getGeminiClient(): GoogleGenAI {
-  if (!isGeminiApiKeyConfigured()) {
-    throw new Error('GEMINI_API_KEY가 설정되어 있지 않습니다.');
-  }
-  if (!geminiClient) {
-    geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY!.trim() });
-  }
-  return geminiClient;
-}
+export { isGeminiApiKeyConfigured } from "./geminiClient";
 
 export interface AlgorithmInsight {
   label: string;
@@ -31,59 +21,117 @@ export interface AnalysisResult {
   apiUsage?: GeminiApiUsageSummary;
 }
 
+/** `factsOnly`는 YouTube API로 rawData를 확보했을 때만 적용된다(미확보 시 자동으로 웹 도구 사용). */
+export interface GeminiAnalysisOptions {
+  factsOnly?: boolean;
+}
+
+function shouldUseWebGroundingTools(
+  rawData: unknown | null | undefined,
+  factsOnly: boolean | undefined,
+): boolean {
+  if (!rawData) return true;
+  return !factsOnly;
+}
+
 function buildStructuredReportRules(reportType: 'channel' | 'video'): string {
   const scopeLabel = reportType === 'channel' ? '채널 분석 보고서' : '영상 분석 보고서';
   const minSectionCount = reportType === 'channel' ? 15 : 8;
 
   return `
-[출력 형식 강제 규칙 - ${scopeLabel}]
-- 반드시 Markdown 헤더(##/###)를 사용해 섹션 순서를 고정하세요.
-- 섹션 제목 번호와 이모지는 지시된 형식을 그대로 유지하세요.
-- 모든 주요 섹션에 최소 3개 이상의 구체 액션 항목(불릿)을 포함하세요.
-- 실행 항목은 "무엇을 / 어떻게 / 기대효과"가 드러나게 작성하세요.
-- 수치나 근거가 불충분하면 추정으로 채우지 말고 "데이터 없음"을 명시하세요.
-- 표 요청 섹션은 반드시 Markdown 표로 작성하세요.
-- "## 🕒 초기 24시간 성과 진단" 섹션을 포함해 CTR/초반 이탈/30초 훅 개선안을 제시하세요.
-- "## 🎯 만족도 중심 진단 카드" 섹션을 포함해 제목-썸네일-오프닝 정합성을 평가하세요.
-- 마지막에 "## ✅ 우선 실행 액션 플랜 (7일)" 섹션을 추가하고, 각 액션에 가설/변경요소/관측지표/성공기준을 포함하세요.
-- 총 섹션 수는 최소 ${minSectionCount}개 이상이 되도록 작성하세요.
-- 한국어로 작성하고, 불필요한 영어 문장 반복을 피하세요.
-`;
+[출력 규칙 - ${scopeLabel}]
+Markdown ##/### 고정, 이모지·번호 형식 유지. 주요 섹션마다 실행 불릿 3개 이상(무엇/어떻게/기대효과). 근거 부족 시 "데이터 없음". 표 지시 구간은 GFM 표. 필수: "## 🕒 초기 24시간 성과 진단", "## 🎯 만족도 중심 진단 카드", 마지막 "## ✅ 우선 실행 액션 플랜 (7일)".
+[필수 — "## ✅ 우선 실행 액션 플랜 (7일)" 상세 형식]
+- 7일을 **단일 순서 목록(ol) 한 덩어리**로만 쓰지 말고, **1일차~7일차 각각 ### 소제목**(예: "### 1일차 — 제목·썸네일 A/B")으로 나눈다.
+- 각 일차마다 아래 4개를 **하위 불릿**으로 두고, **각 불릿은 최소 2문장**으로 서술한다(가설/변경/지표/성공기준을 한 줄에 몰아쓰기 금지).
+  - **가설**: 앞선 진단과의 연결, 검증하려는 인과관계, 이 실험을 택한 이유.
+  - **구체적 변경·실행**: 적용 위치(제목·썸네일·첫 30초 등), 실행 순서, **복사해 쓸 수 있는 문구·장면·편집 포인트 예시**를 포함한다.
+  - **측정 지표**: 스튜디오에서 볼 1차·보조 지표, 확인 시점(예: 업로드 후 24~48시간).
+  - **성공 기준·판정**: 수치·비율·기간, 달성 시 확대/유지, 미달 시 수정 또는 중단 기준.
+- 일차마다 초점(예: 패키징 vs 오프닝 vs 쇼츠 연계)을 달리해도 되나, 위 깊이는 7일 모두 동일하게 유지한다.
+섹션 수 ≥ ${minSectionCount}. 한국어 위주.`;
 }
 
-export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVideoData | null): Promise<AnalysisResult> {
-  const model = "gemini-3.1-pro-preview"; // Using pro for better creative prompt generation
-  
-  let rawDataPrompt = "";
-  if (rawData) {
-    rawDataPrompt = `
-    [시스템: YouTube API 실시간 팩트 데이터 100%]
-    - 영상 제목: ${rawData.title}
-    - 채널명: ${rawData.channelTitle}
-    - 업로드일: ${rawData.publishedAt}
-    - 조회수: ${rawData.views}
-    - 좋아요 수: ${rawData.likes}
-    - 댓글 수: ${rawData.comments}
-    - 태그: ${rawData.tags.join(', ')}
-    - 설명란: ${rawData.description.substring(0, 500)}...
-    
-    위 데이터는 YouTube API에서 방금 가져온 100% 정확한 실시간 팩트 데이터입니다.
-    분석 시 이 수치들을 절대적으로 신뢰하고, 이 수치를 바탕으로 "0. 🔍 팩트 체크 및 로우 데이터" 섹션을 가장 먼저 작성하세요.
-    `;
+/** UI용 algorithmInsights JSON 예시(토큰 절약용 한 줄) */
+const ALGORITHM_INSIGHTS_JSON_HINT =
+  '{"algorithmInsights":[{"label":"항목1","status":"green"},{"label":"항목2","status":"yellow"}]}';
+
+function parseAlgorithmInsightsPayload(parsed: unknown): AlgorithmInsight[] | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const raw = (parsed as Record<string, unknown>).algorithmInsights;
+  if (!Array.isArray(raw)) return null;
+  const out: AlgorithmInsight[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    if (typeof rec.label !== "string" || !rec.label.trim()) continue;
+    const st = rec.status;
+    if (st !== "green" && st !== "yellow" && st !== "red") continue;
+    out.push({ label: rec.label.trim(), status: st });
   }
+  return out.length > 0 ? out : null;
+}
+
+function tryParseAlgorithmInsightsJsonBody(body: string): AlgorithmInsight[] | null {
+  try {
+    return parseAlgorithmInsightsPayload(JSON.parse(body));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 모델이 삽입한 코드 펜스에서 algorithmInsights JSON을 파싱한다.
+ * (이전 정규식은 객체 중첩 시 첫 `}`에서 잘려 파싱에 실패했음)
+ */
+function extractAlgorithmInsightsFromMarkdown(markdown: string): {
+  text: string;
+  algorithmInsights?: AlgorithmInsight[];
+} {
+  const fencePattern = /```[a-zA-Z0-9_-]*\s*\n?([\s\S]*?)```/gi;
+  let m: RegExpExecArray | null;
+  const matches: RegExpExecArray[] = [];
+  while ((m = fencePattern.exec(markdown)) !== null) {
+    matches.push(m);
+  }
+  for (const match of matches) {
+    const body = match[1].trim();
+    const insights = tryParseAlgorithmInsightsJsonBody(body);
+    if (insights) {
+      const stripped = markdown.replace(match[0], "").replace(/\n{3,}/g, "\n\n").trim();
+      return { text: stripped, algorithmInsights: insights };
+    }
+  }
+  return { text: markdown };
+}
+
+export async function analyzeYouTubeVideo(
+  videoUrl: string,
+  rawData?: YouTubeVideoData | null,
+  options?: GeminiAnalysisOptions,
+): Promise<AnalysisResult> {
+  const model = "gemini-3.1-pro-preview"; // Using pro for better creative prompt generation
+
+  const factBlock = rawData ? buildVideoFactPacket(rawData) : "";
+  const semanticGroundingBlock = rawData ? await buildVideoKoreanSemanticGroundingBlock(rawData) : "";
+  const useWebTools = shouldUseWebGroundingTools(rawData, options?.factsOnly);
+  const webToolInstruction = useWebTools
+    ? `Google 검색 도구로 영상 맥락·트렌드를 보조 반영하되, FACT_PACKET 수치와 충돌하면 FACT_PACKET을 우선한다.`
+    : `[도구 모드: 팩트 전용] Google 검색 도구를 사용하지 않는다. FACT_PACKET·제공된 설명·태그와 일반적인 유튜브 베스트 프랙티스만으로 작성한다. 외부 웹 근거·실시간 트렌드 주장은 하지 않고, 불확실하면 "데이터 없음"으로 표시한다.`;
 
   const prompt = `
     당신은 세계 최고의 유튜브 콘텐츠 전략가이자 AI 프롬프트 엔지니어입니다.
     다음 유튜브 영상 URL을 분석하고, 크리에이터가 즉시 활용할 수 있는 상세한 전략 리포트를 작성해 주세요.
     
     URL: ${videoUrl}
-    ${rawDataPrompt}
+    ${factBlock ? `${factBlock}\n` : ""}
+    ${semanticGroundingBlock ? `${semanticGroundingBlock}\n` : ""}
 
     아래 섹션 번호·이모지·제목 형식을 그대로 지키고, 전문적인 마크다운 보고서를 한국어로 작성해 주세요.
 
     0. **🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)**:
-       - 할루시네이션(거짓 정보) 방지를 위해, 제공된 [시스템: YouTube API 실시간 팩트 데이터 100%] (또는 검색된 데이터)를 기반으로 실제 데이터(영상 제목, 채널명, 조회수, 좋아요 수, 댓글 수 등)를 가감 없이 있는 그대로 먼저 나열.
-       - 이후 모든 분석은 반드시 이 데이터에 기반하여 작성할 것.
+       - FACT_PACKET이 있으면 해당 JSON 수치·텍스트를 먼저 그대로 인용·나열한다. 없으면 검색·도구로 확보한 맥락을 "추정/출처"로 구분해 명시한다.
+       - 이후 분석은 위 팩트(또는 명시한 출처)를 우선한다.
 
     1. **📊 영상 상세 분석 (Detailed Video Analysis)**:
        - 영상의 전반적인 성과, 시청자 반응, 핵심 강점 및 약점 분석.
@@ -127,22 +175,11 @@ export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVid
          - **Call-to-Action (CTA)**: 롱폼 본편 시청이나 구독을 유도하는 명확한 액션 플랜
          - **썸네일 내 CTA 문구 추천 (Thumbnail CTA Text)**: 각 쇼츠 컨셉의 썸네일(또는 영상 내 텍스트 오버레이)에 포함할 구체적이고 강력한 Call-to-Action 텍스트 추천.
 
-    [중요: 알고리즘 인사이트 JSON 데이터]
-    리포트 내용 어딘가에 반드시 아래 형식의 JSON 코드 블록을 포함해 주세요. 이 데이터는 UI의 신호등 상태를 표시하는 데 사용됩니다. 분석 결과에 따라 각 항목의 상태를 'green'(우수), 'yellow'(보통/개선필요), 'red'(위험/부족) 중 하나로 평가해 주세요.
-    algorithmInsights의 각 label 값은 한국어 짧은 구로만 쓰고, 영어·괄호 병기·슬래시 표기는 넣지 마세요.
-    \`\`\`json
-    {
-      "algorithmInsights": [
-        { "label": "제목과 SEO 최적화", "status": "green" },
-        { "label": "썸네일 클릭 매력도", "status": "yellow" },
-        { "label": "시청 지속·유지", "status": "red" },
-        { "label": "시청자 참여도", "status": "green" },
-        { "label": "태그·메타데이터", "status": "yellow" }
-      ]
-    }
-    \`\`\`
+    [알고리즘 인사이트 JSON — UI 신호등용 · 필수]
+    응답 **맨 마지막**에 단독으로 \`\`\`json 코드블록 1개**만** 추가한다. 블록 안은 **유효한 JSON 객체 한 덩어리**이며 키는 algorithmInsights만 사용한다. 각 항목은 {label, status}, status는 green|yellow|red, label은 한국어 짧은 구만(영문·괄호·슬래시 금지). 영상 분석 시 항목 5개 전후가 적절. 위 설명 문장은 JSON 밖에 쓰지 말 것.
+    형식 예: \`\`\`json\n${ALGORITHM_INSIGHTS_JSON_HINT}\n\`\`\`
 
-    Google 검색 도구를 사용해 영상 맥락과 최신 트렌드를 반영해 주세요.
+    ${webToolInstruction}
     출력은 구조가 분명한 전문 마크다운 형식으로만 작성해 주세요.
     
     **중요**: 가독성을 위해 각 문단 사이에는 빈 줄을 한 줄 넣어(문단 구분) 여백을 충분히 확보해 주세요. 소제목과 본문 사이에도 적절한 간격을 두어 읽기 편하게 구성해 주세요.
@@ -154,7 +191,7 @@ export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVid
       model: model,
       contents: prompt,
       config: {
-        tools: [{ googleSearch: {} }],
+        ...(useWebTools ? { tools: [{ googleSearch: {} }] } : {}),
         temperature: 0.7,
       }
     });
@@ -168,22 +205,9 @@ export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVid
         uri: chunk.web?.uri as string
       }));
 
-    let algorithmInsights: AlgorithmInsight[] | undefined = undefined;
-    const jsonRegex = /```json\s*(\{[\s\S]*?"algorithmInsights"[\s\S]*?\})\s*```/;
-    const match = text.match(jsonRegex);
-    
-    if (match && match[1]) {
-      try {
-        const parsed = JSON.parse(match[1]);
-        if (parsed.algorithmInsights) {
-          algorithmInsights = parsed.algorithmInsights;
-        }
-        // Remove the JSON block from the markdown output
-        text = text.replace(jsonRegex, '').trim();
-      } catch (e) {
-        console.error("Failed to parse algorithm insights JSON", e);
-      }
-    }
+    const extractedInsights = extractAlgorithmInsightsFromMarkdown(text);
+    text = extractedInsights.text;
+    const algorithmInsights = extractedInsights.algorithmInsights;
 
     const apiUsage = buildGeminiApiUsageSummary(model, response.usageMetadata);
 
@@ -194,34 +218,30 @@ export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVid
   }
 }
 
-export async function analyzeYouTubeChannel(channelUrl: string, rawData?: YouTubeChannelData | null): Promise<AnalysisResult> {
+export async function analyzeYouTubeChannel(
+  channelUrl: string,
+  rawData?: YouTubeChannelData | null,
+  options?: GeminiAnalysisOptions,
+): Promise<AnalysisResult> {
   const model = "gemini-3-flash-preview";
-  
-  let rawDataPrompt = "";
-  if (rawData) {
-    rawDataPrompt = `
-    [시스템: YouTube API 실시간 팩트 데이터 100%]
-    - 채널명: ${rawData.channelName}
-    - 구독자 수: ${rawData.subscriberCount}명
-    - 총 조회수: ${rawData.totalViews}회
-    - 총 영상 수: ${rawData.videoCount}개
-    - 최근 업로드 영상 5개 데이터:
-${rawData.recentVideos.map((v, i) => `      ${i+1}. "${v.title}" (조회수: ${v.views}, 좋아요: ${v.likes}, 댓글: ${v.comments}, 업로드일: ${v.publishedAt})`).join('\n')}
-    
-    위 데이터는 YouTube API에서 방금 가져온 100% 정확한 실시간 팩트 데이터입니다.
-    분석 시 이 수치들을 절대적으로 신뢰하고, 이 수치를 바탕으로 "0. 🔍 팩트 체크 및 로우 데이터" 섹션을 가장 먼저 작성하세요.
-    `;
-  }
+
+  const factBlock = rawData ? buildChannelFactPacket(rawData) : "";
+  const semanticGroundingBlock = rawData ? await buildChannelKoreanSemanticGroundingBlock(rawData) : "";
+  const useWebTools = shouldUseWebGroundingTools(rawData, options?.factsOnly);
+  const webToolInstruction = useWebTools
+    ? `Google 검색·URL 컨텍스트로 트렌드·맥락을 보조하되, FACT_PACKET 수치와 충돌하면 FACT_PACKET을 우선한다.`
+    : `[도구 모드: 팩트 전용] Google 검색·URL 컨텍스트 도구를 사용하지 않는다. FACT_PACKET·채널 URL 맥락과 일반 베스트 프랙티스만으로 작성한다. 경쟁 채널·실시간 트렌드 등 웹 근거가 필요한 주장은 추정하지 말고 "데이터 없음"으로 표시한다.`;
 
   const prompt = `
     다음 YouTube 채널을 심층 분석해 주세요: ${channelUrl}
-    ${rawDataPrompt}
+    ${factBlock ? `${factBlock}\n` : ""}
+    ${semanticGroundingBlock ? `${semanticGroundingBlock}\n` : ""}
     
     아래 섹션 번호·이모지·제목 형식을 그대로 지키고, 전문적인 마크다운 보고서를 한국어로 작성해 주세요.
     
     0. **🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)**:
-       - 할루시네이션(거짓 정보) 방지를 위해, 제공된 [시스템: YouTube API 실시간 팩트 데이터 100%] (또는 검색된 데이터)를 기반으로 실제 데이터(구독자 수, 총 조회수, 최근 업로드된 영상 3~5개의 정확한 제목과 조회수 등)를 가감 없이 있는 그대로 먼저 나열.
-       - 이후 모든 분석은 반드시 이 데이터에 기반하여 작성할 것.
+       - FACT_PACKET이 있으면 JSON의 구독자·총조회·영상수·최근 영상(rv) 수치를 먼저 그대로 인용·나열한다. 없으면 검색·도구 결과를 "추정/출처"로 구분해 명시한다.
+       - 이후 분석은 위 팩트(또는 명시한 출처)를 우선한다.
        
     1. **📊 채널 데이터 및 현황 분석 (Channel Data Analysis)**:
        - 채널의 현재 규모, 주요 지표, 최근 성장세 분석.
@@ -299,22 +319,11 @@ ${rawData.recentVideos.map((v, i) => `      ${i+1}. "${v.title}" (조회수: ${v
           3) **Call-to-Action (CTA)**: 롱폼 본편 시청이나 구독을 유도하는 명확한 액션 플랜
           4) **썸네일 내 CTA 문구 추천 (Thumbnail CTA Text)**: 각 쇼츠 컨셉의 썸네일에 포함할 구체적이고 강력한 Call-to-Action 텍스트 추천.
     
-    [중요: 알고리즘 인사이트 JSON 데이터]
-    리포트 내용 어딘가에 반드시 아래 형식의 JSON 코드 블록을 포함해 주세요. 이 데이터는 UI의 신호등 상태를 표시하는 데 사용됩니다. 분석 결과에 따라 각 항목의 상태를 'green'(우수), 'yellow'(보통/개선필요), 'red'(위험/부족) 중 하나로 평가해 주세요.
-    algorithmInsights의 각 label 값은 한국어 짧은 구로만 쓰고, 영어·괄호 병기·슬래시 표기는 넣지 마세요.
-    \`\`\`json
-    {
-      "algorithmInsights": [
-        { "label": "콘텐츠 성과", "status": "green" },
-        { "label": "수익화 전략", "status": "yellow" },
-        { "label": "구독자 성장", "status": "red" },
-        { "label": "SEO와 알고리즘", "status": "green" },
-        { "label": "시청자 참여", "status": "yellow" }
-      ]
-    }
-    \`\`\`
+    [알고리즘 인사이트 JSON — UI 신호등용 · 필수]
+    응답 **맨 마지막**에 단독으로 \`\`\`json 코드블록 1개**만** 추가한다. 블록 안은 **유효한 JSON 객체 한 덩어리**이며 키는 algorithmInsights만 사용한다. 각 항목은 {label, status}, status는 green|yellow|red, label은 한국어 짧은 구만. 채널 분석 시 항목 5개 전후가 적절. 위 설명 문장은 JSON 밖에 쓰지 말 것.
+    형식 예: \`\`\`json\n${ALGORITHM_INSIGHTS_JSON_HINT}\n\`\`\`
 
-    Google 검색 도구를 사용해 채널의 최근 성과와 트렌드를 반영해 주세요.
+    ${webToolInstruction}
     출력은 구조가 분명한 전문 마크다운 형식으로만 작성해 주세요.
     
     **중요**: 가독성을 위해 각 문단 사이에는 빈 줄을 한 줄 넣어(문단 구분) 여백을 충분히 확보해 주세요. 소제목과 본문 사이에도 적절한 간격을 두어 읽기 편하게 구성해 주세요.
@@ -326,8 +335,12 @@ ${rawData.recentVideos.map((v, i) => `      ${i+1}. "${v.title}" (조회수: ${v
       model: model,
       contents: prompt,
       config: {
-        tools: [{ googleSearch: {} }, { urlContext: {} }],
-        toolConfig: { includeServerSideToolInvocations: true }
+        ...(useWebTools
+          ? {
+              tools: [{ googleSearch: {} }, { urlContext: {} }],
+              toolConfig: { includeServerSideToolInvocations: true },
+            }
+          : {}),
       },
     });
 
@@ -340,22 +353,9 @@ ${rawData.recentVideos.map((v, i) => `      ${i+1}. "${v.title}" (조회수: ${v
     // Deduplicate by URI
     const uniqueSources = Array.from(new Map(sources.map(s => [s.uri, s])).values());
 
-    let algorithmInsights: AlgorithmInsight[] | undefined = undefined;
-    const jsonRegex = /```json\s*(\{[\s\S]*?"algorithmInsights"[\s\S]*?\})\s*```/;
-    const match = text.match(jsonRegex);
-    
-    if (match && match[1]) {
-      try {
-        const parsed = JSON.parse(match[1]);
-        if (parsed.algorithmInsights) {
-          algorithmInsights = parsed.algorithmInsights;
-        }
-        // Remove the JSON block from the markdown output
-        text = text.replace(jsonRegex, '').trim();
-      } catch (e) {
-        console.error("Failed to parse algorithm insights JSON", e);
-      }
-    }
+    const extractedInsights = extractAlgorithmInsightsFromMarkdown(text);
+    text = extractedInsights.text;
+    const algorithmInsights = extractedInsights.algorithmInsights;
 
     const apiUsage = buildGeminiApiUsageSummary(model, response.usageMetadata);
 

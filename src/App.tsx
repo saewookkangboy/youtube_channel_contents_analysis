@@ -9,6 +9,7 @@ import {
   analyzeYouTubeVideo,
   AlgorithmInsight,
   isGeminiApiKeyConfigured,
+  type GeminiAnalysisOptions,
 } from './services/geminiService';
 import { fetchYouTubeChannelData, fetchYouTubeVideoData, YouTubeChannelData, YouTubeVideoData } from './services/youtubeApiService';
 import { AnalysisMarkdown } from './components/AnalysisMarkdown';
@@ -18,8 +19,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
   Youtube, 
-  BarChart3, 
-  Users, 
+  BarChart3,
   TrendingUp, 
   Info,
   Loader2,
@@ -33,7 +33,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Table2,
-  ListChecks
+  ListChecks,
+  Activity,
 } from 'lucide-react';
 import { cn } from './lib/cn';
 import { analyzeReportCompleteness, buildReportCompletenessAppendix } from './lib/reportCompleteness';
@@ -80,6 +81,10 @@ export default function App() {
     totalReasoningTokens: 0,
   });
 
+  /** YouTube Data API로 팩트를 가져온 뒤 웹 검색·URL 도구를 끄고 비용·지연을 줄임 */
+  const [factsOnlyMode, setFactsOnlyMode] = useState(false);
+  const hasYtApiKey = Boolean(import.meta.env.VITE_YOUTUBE_API_KEY);
+
   const handleAnalyze = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
@@ -117,7 +122,10 @@ export default function App() {
         }
 
         setChannelData(rawData);
-        const result = await analyzeYouTubeChannel(url, rawData);
+        const geminiOpts: GeminiAnalysisOptions = {
+          factsOnly: hasYtApiKey && factsOnlyMode,
+        };
+        const result = await analyzeYouTubeChannel(url, rawData, geminiOpts);
         setAnalysis(result.text || '분석 결과가 비어 있습니다. 잠시 후 다시 시도해 주세요.');
         setSources(result.sources || []);
         setAlgorithmInsights(result.algorithmInsights || null);
@@ -161,7 +169,10 @@ export default function App() {
         }
 
         setVideoData(rawData);
-        const result = await analyzeYouTubeVideo(videoUrl, rawData);
+        const geminiOpts: GeminiAnalysisOptions = {
+          factsOnly: hasYtApiKey && factsOnlyMode,
+        };
+        const result = await analyzeYouTubeVideo(videoUrl, rawData, geminiOpts);
         setVideoAnalysis(result.text || '분석 결과가 비어 있습니다. 잠시 후 다시 시도해 주세요.');
         setVideoSources(result.sources || []);
         setVideoAlgorithmInsights(result.algorithmInsights || null);
@@ -235,6 +246,102 @@ export default function App() {
     return analyzeReportCompleteness(activeTab, currentAnalysis);
   }, [activeTab, currentAnalysis]);
 
+  /** 조회 대비 참여·반응 비율 및 채널 맥락 지표 (API 데이터가 있을 때만 수치 표시) */
+  const operationalKpi = useMemo(() => {
+    const fmtPct = (n: number | null, digits = 2) => {
+      if (n === null || Number.isNaN(n)) return '—';
+      if (n > 0 && n < 10 ** -digits) return `<0.${'0'.repeat(digits - 1)}1%`;
+      return `${n.toFixed(digits)}%`;
+    };
+
+    /** 대략 0~10% 구간이 막대 전체를 쓰도록 스케일 */
+    const rateBar = (pct: number | null) =>
+      pct === null || Number.isNaN(pct) ? 0 : Math.min(100, pct * 10);
+
+    if (activeTab === 'video' && videoData) {
+      const views = parseInt(videoData.views, 10) || 0;
+      const likes = parseInt(videoData.likes, 10) || 0;
+      const comments = parseInt(videoData.comments, 10) || 0;
+      const engagementPct = views > 0 ? ((likes + comments) / views) * 100 : null;
+      const likeRatePct = views > 0 ? (likes / views) * 100 : null;
+      const commentRatePct = views > 0 ? (comments / views) * 100 : null;
+      return {
+        scopeLabel: '선택한 영상 1건',
+        rows: [
+          { key: 'engagement', label: '참여율', hint: '(좋아요+댓글)÷조회', value: fmtPct(engagementPct), barFill: rateBar(engagementPct) },
+          { key: 'like', label: '좋아요율', hint: '좋아요÷조회', value: fmtPct(likeRatePct), barFill: rateBar(likeRatePct) },
+          { key: 'comment', label: '댓글율', hint: '댓글÷조회', value: fmtPct(commentRatePct), barFill: rateBar(commentRatePct) },
+        ],
+        footnote:
+          views === 0
+            ? '조회수가 없어 비율을 계산할 수 없습니다.'
+            : '비율이 낮으면 썸네일·첫 30초·CTA(좋아요·댓글 유도)를 점검해 보세요.',
+      };
+    }
+
+    if (activeTab === 'channel' && channelData && channelData.recentVideos.length > 0) {
+      const { recentVideos } = channelData;
+      let views = 0;
+      let likes = 0;
+      let comments = 0;
+      for (const v of recentVideos) {
+        views += parseInt(v.views, 10) || 0;
+        likes += parseInt(v.likes, 10) || 0;
+        comments += parseInt(v.comments, 10) || 0;
+      }
+      const engagementPct = views > 0 ? ((likes + comments) / views) * 100 : null;
+      const likeRatePct = views > 0 ? (likes / views) * 100 : null;
+      const commentRatePct = views > 0 ? (comments / views) * 100 : null;
+
+      const totalViews = parseInt(channelData.totalViews, 10) || 0;
+      const videoCount = parseInt(channelData.videoCount, 10) || 0;
+      const channelAvgViews = videoCount > 0 ? totalViews / videoCount : null;
+      const recentAvgViews = recentVideos.length > 0 ? views / recentVideos.length : null;
+      let recentVsChannel: string | null = null;
+      let recentVsBarFill = 0;
+      if (channelAvgViews && channelAvgViews > 0 && recentAvgViews !== null) {
+        const ratio = recentAvgViews / channelAvgViews;
+        recentVsBarFill = Math.min(100, ratio * 50);
+        recentVsChannel = `${ratio >= 1 ? '+' : ''}${((ratio - 1) * 100).toFixed(0)}%`;
+      }
+
+      const baseRows = [
+        { key: 'engagement', label: '참여율', hint: '(좋아요+댓글)÷조회', value: fmtPct(engagementPct), barFill: rateBar(engagementPct) },
+        { key: 'like', label: '좋아요율', hint: '좋아요÷조회', value: fmtPct(likeRatePct), barFill: rateBar(likeRatePct) },
+        { key: 'comment', label: '댓글율', hint: '댓글÷조회', value: fmtPct(commentRatePct), barFill: rateBar(commentRatePct) },
+      ];
+      const rows =
+        recentVsChannel !== null
+          ? [
+              ...baseRows,
+              {
+                key: 'recentVsAvg',
+                label: '최근 vs 채널 평균 조회',
+                hint: '최근 평균 조회 ÷ 채널 전체 평균',
+                value: recentVsChannel,
+                barFill: recentVsBarFill,
+              },
+            ]
+          : baseRows;
+
+      return {
+        scopeLabel: `최근 업로드 ${recentVideos.length}개 합산`,
+        rows,
+        footnote:
+          views === 0
+            ? '최근 영상에 조회 데이터가 없어 비율을 계산할 수 없습니다.'
+            : '최근 평균 조회가 채널 평균보다 낮으면 제목·썸네일·업로드 주기를 우선 점검하는 편이 좋습니다.',
+      };
+    }
+
+    return {
+      scopeLabel: null as string | null,
+      rows: [] as { key: string; label: string; hint: string; value: string; barFill: number }[],
+      footnote:
+        'VITE_YOUTUBE_API_KEY로 분석을 실행하면 조회·좋아요·댓글 기준으로 위 지표가 채워집니다.',
+    };
+  }, [activeTab, videoData, channelData]);
+
   const [compactChart, setCompactChart] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 639px)');
@@ -289,34 +396,56 @@ export default function App() {
 
           <form
             onSubmit={handleAnalyze}
-            className="flex w-full flex-col gap-2 md:max-w-xl md:flex-1 md:flex-row md:items-stretch md:gap-2"
+            className="flex w-full flex-col gap-2 md:max-w-xl md:flex-1 md:gap-2"
           >
-            <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                enterKeyHint="search"
-                autoComplete="url"
-                inputMode="url"
-                value={currentUrl}
-                onChange={(e) =>
-                  activeTab === 'channel' ? setUrl(e.target.value) : setVideoUrl(e.target.value)
-                }
-                placeholder={
-                  activeTab === 'channel'
-                    ? '채널 URL (@핸들 또는 /channel/UC…)'
-                    : '영상 URL (watch?v=…)'
-                }
-                className="min-h-11 w-full rounded-full border-none bg-gray-100 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-red-500"
-              />
+            <div className="flex w-full flex-col gap-2 md:flex-row md:items-stretch md:gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  enterKeyHint="search"
+                  autoComplete="url"
+                  inputMode="url"
+                  value={currentUrl}
+                  onChange={(e) =>
+                    activeTab === 'channel' ? setUrl(e.target.value) : setVideoUrl(e.target.value)
+                  }
+                  placeholder={
+                    activeTab === 'channel'
+                      ? '채널 URL (@핸들 또는 /channel/UC…)'
+                      : '영상 URL (watch?v=…)'
+                  }
+                  className="min-h-11 w-full rounded-full border-none bg-gray-100 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={currentLoading}
+                className="flex min-h-11 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full bg-black px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
+              >
+                {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '분석'}
+              </button>
             </div>
-            <button
-              type="submit"
-              disabled={currentLoading}
-              className="flex min-h-11 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full bg-black px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
-            >
-              {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '분석'}
-            </button>
+            {hasYtApiKey && (
+              <label
+                className="flex cursor-pointer items-start gap-2.5 px-1 text-left text-xs leading-snug text-gray-600 md:items-center"
+                title="YouTube Data API로 메타데이터를 가져온 경우에만 웹 도구를 끕니다. API 호출이 실패하면 자동으로 검색·URL 컨텍스트로 보완합니다."
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-red-600 focus:ring-red-500 md:mt-0"
+                  checked={factsOnlyMode}
+                  onChange={(e) => setFactsOnlyMode(e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium text-gray-700">팩트 우선</span>
+                  <span className="text-gray-500">
+                    {' '}
+                    (API로 가져온 수치가 있을 때만 웹 검색·URL 도구 끄기 — 토큰·비용 절감)
+                  </span>
+                </span>
+              </label>
+            )}
           </form>
         </div>
       </header>
@@ -362,7 +491,9 @@ export default function App() {
                 </div>
               </div>
               <p className="mt-4 text-gray-500 font-medium animate-pulse">
-                웹 검색과 모델 추론으로 인사이트를 모으는 중입니다…
+                {hasYtApiKey && factsOnlyMode
+                  ? 'YouTube 팩트와 모델로 리포트를 작성하는 중입니다…'
+                  : '웹 검색과 모델 추론으로 인사이트를 모으는 중입니다…'}
               </p>
             </motion.div>
           )}
@@ -526,16 +657,54 @@ export default function App() {
                 </div>
 
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
-                    <Users className="w-4 h-4" /> 시청자 반응 (예시 지표)
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1 flex items-center gap-2">
+                    <Activity className="h-4 w-4 shrink-0" /> 운영 개선 KPI
                   </h3>
-                  <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mb-2">
-                    <div className="bg-green-500 h-full w-[85%]" />
-                  </div>
-                  <div className="flex justify-between text-[10px] font-bold text-gray-400">
-                    <span>부정</span>
-                    <span>긍정</span>
-                  </div>
+                  <p className="mb-4 text-[11px] leading-snug text-gray-500">
+                    조회 대비 참여·반응 비율과 채널 맥락(최근 vs 평균)을 함께 봅니다.
+                  </p>
+                  {operationalKpi.scopeLabel && (
+                    <p className="mb-3 rounded-xl bg-gray-50 px-3 py-2 text-[11px] font-medium text-gray-600">
+                      기준: {operationalKpi.scopeLabel}
+                    </p>
+                  )}
+                  {operationalKpi.rows.length > 0 ? (
+                    <div className="space-y-3">
+                      {operationalKpi.rows.map((row) => (
+                        <div key={row.key} className="rounded-2xl border border-gray-100 bg-gray-50/80 p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900">{row.label}</p>
+                              <p className="text-[10px] text-gray-400">{row.hint}</p>
+                            </div>
+                            <span className="shrink-0 text-sm font-bold tabular-nums text-gray-900">{row.value}</span>
+                          </div>
+                          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-200/90">
+                            <div
+                              className={cn(
+                                'h-full rounded-full transition-[width] duration-500',
+                                row.key === 'recentVsAvg' ? 'bg-violet-500' : 'bg-orange-500',
+                              )}
+                              style={{ width: `${row.barFill}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {(['참여율', '좋아요율', '댓글율'] as const).map((label) => (
+                        <div key={label} className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-400">{label}</span>
+                            <span className="text-sm font-bold text-gray-300">—</span>
+                          </div>
+                          <div className="mt-2 h-1.5 w-full rounded-full bg-gray-200/60" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-4 text-[11px] leading-relaxed text-gray-500">{operationalKpi.footnote}</p>
                 </div>
               </div>
 
@@ -749,10 +918,9 @@ export default function App() {
                   
                   <div
                     id="report-content"
-                    className="prose prose-slate max-w-none min-w-0
+                    className="report-document prose prose-slate max-w-none min-w-0
                     prose-headings:font-bold prose-headings:tracking-tight
-                    prose-p:text-gray-700 prose-p:leading-loose prose-p:text-[15px]
-                    prose-strong:font-bold prose-strong:text-gray-900
+                    prose-p:text-[15px] prose-p:leading-[1.82]
                     prose-a:text-red-600 hover:prose-a:text-red-700
                     prose-ul:mt-4 prose-ul:mb-6 prose-li:my-2"
                   >
