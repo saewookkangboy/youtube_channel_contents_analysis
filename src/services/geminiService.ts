@@ -1,7 +1,23 @@
 import { GoogleGenAI } from "@google/genai";
+import { buildGeminiApiUsageSummary, type GeminiApiUsageSummary } from "../lib/geminiApiUsage";
 import { YouTubeChannelData, YouTubeVideoData } from "./youtubeApiService";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+export function isGeminiApiKeyConfigured(): boolean {
+  const key = process.env.GEMINI_API_KEY;
+  return typeof key === 'string' && key.trim().length > 0;
+}
+
+let geminiClient: GoogleGenAI | null = null;
+
+function getGeminiClient(): GoogleGenAI {
+  if (!isGeminiApiKeyConfigured()) {
+    throw new Error('GEMINI_API_KEY가 설정되어 있지 않습니다.');
+  }
+  if (!geminiClient) {
+    geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY!.trim() });
+  }
+  return geminiClient;
+}
 
 export interface AlgorithmInsight {
   label: string;
@@ -12,6 +28,27 @@ export interface AnalysisResult {
   text: string;
   sources: { title?: string; uri: string }[];
   algorithmInsights?: AlgorithmInsight[];
+  apiUsage?: GeminiApiUsageSummary;
+}
+
+function buildStructuredReportRules(reportType: 'channel' | 'video'): string {
+  const scopeLabel = reportType === 'channel' ? '채널 분석 보고서' : '영상 분석 보고서';
+  const minSectionCount = reportType === 'channel' ? 15 : 8;
+
+  return `
+[출력 형식 강제 규칙 - ${scopeLabel}]
+- 반드시 Markdown 헤더(##/###)를 사용해 섹션 순서를 고정하세요.
+- 섹션 제목 번호와 이모지는 지시된 형식을 그대로 유지하세요.
+- 모든 주요 섹션에 최소 3개 이상의 구체 액션 항목(불릿)을 포함하세요.
+- 실행 항목은 "무엇을 / 어떻게 / 기대효과"가 드러나게 작성하세요.
+- 수치나 근거가 불충분하면 추정으로 채우지 말고 "데이터 없음"을 명시하세요.
+- 표 요청 섹션은 반드시 Markdown 표로 작성하세요.
+- "## 🕒 초기 24시간 성과 진단" 섹션을 포함해 CTR/초반 이탈/30초 훅 개선안을 제시하세요.
+- "## 🎯 만족도 중심 진단 카드" 섹션을 포함해 제목-썸네일-오프닝 정합성을 평가하세요.
+- 마지막에 "## ✅ 우선 실행 액션 플랜 (7일)" 섹션을 추가하고, 각 액션에 가설/변경요소/관측지표/성공기준을 포함하세요.
+- 총 섹션 수는 최소 ${minSectionCount}개 이상이 되도록 작성하세요.
+- 한국어로 작성하고, 불필요한 영어 문장 반복을 피하세요.
+`;
 }
 
 export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVideoData | null): Promise<AnalysisResult> {
@@ -20,7 +57,7 @@ export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVid
   let rawDataPrompt = "";
   if (rawData) {
     rawDataPrompt = `
-    [SYSTEM: 100% ACCURATE REAL-TIME YOUTUBE API DATA]
+    [시스템: YouTube API 실시간 팩트 데이터 100%]
     - 영상 제목: ${rawData.title}
     - 채널명: ${rawData.channelTitle}
     - 업로드일: ${rawData.publishedAt}
@@ -42,10 +79,10 @@ export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVid
     URL: ${videoUrl}
     ${rawDataPrompt}
 
-    Please provide a comprehensive report in Korean (한국어) with the following sections, using relevant emojis for each heading:
+    아래 섹션 번호·이모지·제목 형식을 그대로 지키고, 전문적인 마크다운 보고서를 한국어로 작성해 주세요.
 
     0. **🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)**:
-       - 할루시네이션(거짓 정보) 방지를 위해, 제공된 [SYSTEM: 100% ACCURATE REAL-TIME YOUTUBE API DATA] (또는 검색된 데이터)를 기반으로 실제 데이터(영상 제목, 채널명, 조회수, 좋아요 수, 댓글 수 등)를 가감 없이 있는 그대로 먼저 나열.
+       - 할루시네이션(거짓 정보) 방지를 위해, 제공된 [시스템: YouTube API 실시간 팩트 데이터 100%] (또는 검색된 데이터)를 기반으로 실제 데이터(영상 제목, 채널명, 조회수, 좋아요 수, 댓글 수 등)를 가감 없이 있는 그대로 먼저 나열.
        - 이후 모든 분석은 반드시 이 데이터에 기반하여 작성할 것.
 
     1. **📊 영상 상세 분석 (Detailed Video Analysis)**:
@@ -65,14 +102,24 @@ export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVid
        - 이 영상의 매력도를 극대화할 수 있는 새로운 **썸네일(Thumbnail)** 제작을 위한 'Nano Banana Pro(최고 성능의 이미지/텍스트 생성 AI 모델)'용 프롬프트를 상세히 작성.
        - 썸네일 프롬프트는 영문으로 작성하여 이미지 생성에 바로 쓸 수 있게 하고, 구체적인 구도, 조명, 피사체, 분위기를 묘사할 것.
 
-    4. **🤖 알고리즘 및 SEO 최적화 가이드 (Algorithm & SEO Optimization)**:
+    4. **🕒 초기 24시간 성과 진단 (First 24h Diagnostics)**:
+       - Home/Suggested 맥락의 CTR 해석과 노출 대비 성과 진단.
+       - 초반 이탈 구간(특히 첫 30초)에서의 문제 가설과 개선안.
+       - "첫 30초 훅" 개선안 3개를 구체 문장 형태로 제시.
+
+    5. **🎯 만족도 중심 진단 카드 (Satisfaction Fit Card)**:
+       - 제목-썸네일-오프닝의 약속/전달 일치도를 '높음/보통/낮음'으로 평가.
+       - 클릭 유도만 강하고 본문 전달이 약한 리스크 여부 진단.
+       - 시청자 기대와 실제 전달 간 갭을 줄이는 즉시 수정안 제시.
+
+    6. **🤖 알고리즘 및 SEO 최적화 가이드 (Algorithm & SEO Optimization)**:
        - **[필수] 알고리즘 & SEO 개선 체크리스트 (Markdown 표 형식)**:
          - 반드시 다음의 열(Column)을 포함하는 상세한 **Markdown 표(Table)**를 작성하세요: '최적화 항목(Optimization Item)', '현재 상태 진단(Current Status Assessment)', '구체적인 개선 방안(Specific Improvement Actions)'.
          - 표에 포함될 필수 최적화 항목: **제목(Titles), 설명란(Descriptions), 태그(Tags), 썸네일(Thumbnails)**.
        - **추천 비디오 태그 (Recommended Video Tags)**:
          - SEO 최적화 및 알고리즘 노출을 극대화하기 위한 핵심 키워드 및 태그 목록 제안.
 
-    5. **📱 쇼츠 콘텐츠 전략 (Shorts Content Strategy)**:
+    7. **📱 쇼츠 콘텐츠 전략 (Shorts Content Strategy)**:
        - 이 롱폼 영상에서 파생될 수 있는 **3개의 구체적인 쇼츠(Shorts) 콘텐츠 아이디어**.
        - 각 쇼츠 아이디어별로 다음을 반드시 포함:
          - **Initial Hook (초반 3초 훅)**: 시청자의 이목을 단숨에 끄는 도입부
@@ -82,26 +129,28 @@ export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVid
 
     [중요: 알고리즘 인사이트 JSON 데이터]
     리포트 내용 어딘가에 반드시 아래 형식의 JSON 코드 블록을 포함해 주세요. 이 데이터는 UI의 신호등 상태를 표시하는 데 사용됩니다. 분석 결과에 따라 각 항목의 상태를 'green'(우수), 'yellow'(보통/개선필요), 'red'(위험/부족) 중 하나로 평가해 주세요.
+    algorithmInsights의 각 label 값은 한국어 짧은 구로만 쓰고, 영어·괄호 병기·슬래시 표기는 넣지 마세요.
     \`\`\`json
     {
       "algorithmInsights": [
-        { "label": "제목 최적화 (Title SEO)", "status": "green" },
-        { "label": "썸네일 매력도 (Thumbnail CTR)", "status": "yellow" },
-        { "label": "시청 지속 시간 (Retention)", "status": "red" },
-        { "label": "시청자 참여 (Engagement)", "status": "green" },
-        { "label": "태그 및 메타데이터 (Tags/Meta)", "status": "yellow" }
+        { "label": "제목과 SEO 최적화", "status": "green" },
+        { "label": "썸네일 클릭 매력도", "status": "yellow" },
+        { "label": "시청 지속·유지", "status": "red" },
+        { "label": "시청자 참여도", "status": "green" },
+        { "label": "태그·메타데이터", "status": "yellow" }
       ]
     }
     \`\`\`
 
-    Use Google Search to get the most up-to-date information about the video's context and trends.
-    Return the analysis in a structured, professional Markdown format.
+    Google 검색 도구를 사용해 영상 맥락과 최신 트렌드를 반영해 주세요.
+    출력은 구조가 분명한 전문 마크다운 형식으로만 작성해 주세요.
     
-    **중요**: 가독성을 위해 각 문단 사이에는 반드시 두 번의 줄바꿈(Double Line Break)을 사용하여 여백을 충분히 확보해 주세요. 소제목과 본문 사이에도 적절한 간격을 두어 시각적으로 편안하게 읽힐 수 있도록 구성해 주세요.
+    **중요**: 가독성을 위해 각 문단 사이에는 빈 줄을 한 줄 넣어(문단 구분) 여백을 충분히 확보해 주세요. 소제목과 본문 사이에도 적절한 간격을 두어 읽기 편하게 구성해 주세요.
+    ${buildStructuredReportRules('video')}
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await getGeminiClient().models.generateContent({
       model: model,
       contents: prompt,
       config: {
@@ -136,7 +185,9 @@ export async function analyzeYouTubeVideo(videoUrl: string, rawData?: YouTubeVid
       }
     }
 
-    return { text, sources, algorithmInsights };
+    const apiUsage = buildGeminiApiUsageSummary(model, response.usageMetadata);
+
+    return { text, sources, algorithmInsights, apiUsage };
   } catch (error) {
     console.error("Gemini API Error (Video Analysis):", error);
     throw error;
@@ -149,7 +200,7 @@ export async function analyzeYouTubeChannel(channelUrl: string, rawData?: YouTub
   let rawDataPrompt = "";
   if (rawData) {
     rawDataPrompt = `
-    [SYSTEM: 100% ACCURATE REAL-TIME YOUTUBE API DATA]
+    [시스템: YouTube API 실시간 팩트 데이터 100%]
     - 채널명: ${rawData.channelName}
     - 구독자 수: ${rawData.subscriberCount}명
     - 총 조회수: ${rawData.totalViews}회
@@ -163,13 +214,13 @@ ${rawData.recentVideos.map((v, i) => `      ${i+1}. "${v.title}" (조회수: ${v
   }
 
   const prompt = `
-    Analyze the following YouTube channel in depth: ${channelUrl}
+    다음 YouTube 채널을 심층 분석해 주세요: ${channelUrl}
     ${rawDataPrompt}
     
-    Please provide a comprehensive report in Korean (한국어) with the following sections, using relevant emojis for each heading:
+    아래 섹션 번호·이모지·제목 형식을 그대로 지키고, 전문적인 마크다운 보고서를 한국어로 작성해 주세요.
     
     0. **🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)**:
-       - 할루시네이션(거짓 정보) 방지를 위해, 제공된 [SYSTEM: 100% ACCURATE REAL-TIME YOUTUBE API DATA] (또는 검색된 데이터)를 기반으로 실제 데이터(구독자 수, 총 조회수, 최근 업로드된 영상 3~5개의 정확한 제목과 조회수 등)를 가감 없이 있는 그대로 먼저 나열.
+       - 할루시네이션(거짓 정보) 방지를 위해, 제공된 [시스템: YouTube API 실시간 팩트 데이터 100%] (또는 검색된 데이터)를 기반으로 실제 데이터(구독자 수, 총 조회수, 최근 업로드된 영상 3~5개의 정확한 제목과 조회수 등)를 가감 없이 있는 그대로 먼저 나열.
        - 이후 모든 분석은 반드시 이 데이터에 기반하여 작성할 것.
        
     1. **📊 채널 데이터 및 현황 분석 (Channel Data Analysis)**:
@@ -189,7 +240,17 @@ ${rawData.recentVideos.map((v, i) => `      ${i+1}. "${v.title}" (조회수: ${v
     4. **📈 구독자 증가를 위한 전략 (Subscriber Growth Strategy)**:
        - 신규 시청자를 구독자로 전환시키기 위한 구체적인 액션 플랜.
        
-    5. **🤖 유튜브 알고리즘 및 SEO 최적화 가이드 (Algorithm & SEO Optimization)**:
+    5. **🕒 초기 24시간 성과 진단 (First 24h Diagnostics)**:
+       - Home/Suggested CTR을 노출 맥락과 함께 진단하고, 개선 우선순위를 제시.
+       - 초반 이탈 구간(특히 첫 30초)에서 반복되는 문제 패턴을 도출.
+       - 채널 공통 오프닝 구조 개선안(훅/패턴 인터럽트/전개 템포) 제안.
+
+    6. **🎯 만족도 중심 진단 카드 (Satisfaction Fit Card)**:
+       - 최근 상위/하위 영상을 기준으로 제목-썸네일-오프닝 정합성 평가.
+       - 클릭 유도 대비 시청 경험 품질 리스크를 '높음/보통/낮음'으로 분류.
+       - 재방문 및 구독 전환 관점에서 즉시 수정할 패키징/본문 개선안 제시.
+
+    7. **🤖 유튜브 알고리즘 및 SEO 최적화 가이드 (Algorithm & SEO Optimization)**:
        - **[필수] 알고리즘 & SEO 개선 체크리스트 (Markdown 표 형식)**:
          - 반드시 다음의 열(Column)을 포함하는 상세한 **Markdown 표(Table)**를 작성하세요: '최적화 항목(Optimization Item)', '현재 상태 진단(Current Status Assessment)', '구체적인 개선 방안(Specific Improvement Actions)'.
          - 표에 포함될 필수 최적화 항목: **제목(Titles), 설명란(Descriptions), 태그(Tags), 썸네일(Thumbnails)**.
@@ -201,35 +262,35 @@ ${rawData.recentVideos.map((v, i) => `      ${i+1}. "${v.title}" (조회수: ${v
        - 색상 대비(Color Contrast), 폰트 선택(Font Choices), 다양한 화면 크기(모바일 등)에서도 가독성이 뛰어난 텍스트 크기 및 배치(Placement)에 대한 구체적인 가이드라인 제공.
        - 썸네일 클릭률을 높이기 위한 **2~3가지의 명확하고 구별되는 디자인 개선안(Distinct Design Recommendations)**을 구체적으로 제안.
 
-    6. **✍️ 영상 제목 효율성 및 개선 제안 (Video Title Effectiveness & Suggestions)**:
+    8. **✍️ 영상 제목 효율성 및 개선 제안 (Video Title Effectiveness & Suggestions)**:
        - 현재 사용 중인 제목의 클릭 유도 효율성 분석.
        - 검색 최적화(SEO)를 위한 키워드 배치 및 클릭률(CTR)을 높이기 위한 매력적인 제목 스타일 제안.
        - 시청자의 호기심을 자극하는 '클릭 트리거(Click Triggers)'를 활용한 구체적인 제목 수정 예시 3가지 제공.
 
-    7. **🤝 시청자 참여 및 커뮤니티 전략 (User Engagement Features)**:
+    9. **🤝 시청자 참여 및 커뮤니티 전략 (User Engagement Features)**:
        - 구독자와의 상호작용을 높이기 위한 인터랙티브 요소 제안 (설문조사, Q&A 세션 등).
        - 커뮤니티 탭 활용 전략 및 시청자 충성도 강화를 위한 구체적인 방법.
 
-    8. **⏰ 최적의 업로드 시간 및 요일 제안 (Optimal Publishing Schedule)**:
+    10. **⏰ 최적의 업로드 시간 및 요일 제안 (Optimal Publishing Schedule)**:
        - 시청자 인구통계 및 활동 패턴을 기반으로 조회수와 참여도를 극대화할 수 있는 최적의 업로드 시간대와 요일 분석.
        - 타겟 시청층의 라이프스타일을 고려한 맞춤형 스케줄 제안.
 
-    9. **💡 신규 콘텐츠 시리즈 아이디어 (New Content Series Ideas)**:
+    11. **💡 신규 콘텐츠 시리즈 아이디어 (New Content Series Ideas)**:
        - 채널의 니치(Niche), 시청자 성향(Audience), 기존 성공 사례(Successful Content Types)를 바탕으로 2~3개의 독창적인 신규 콘텐츠 시리즈(Original Content Series) 제안.
        - 썸네일과 제목을 먼저 기획하는 'Thumbnail-First' 접근법에 기반한 신규 콘텐츠 포맷 기획안 포함.
        - 각 시리즈별로 기획 의도 및 콘셉트(Concept), 타겟 시청자 어필 포인트(Target Audience Appeal), 예상 참여도 및 기대 효과(Expected Engagement Impact)를 구체적으로 포함.
 
-    10. **🎥 영상 및 오디오 품질 개선 제안 (Video & Audio Quality Improvement)**:
+    12. **🎥 영상 및 오디오 품질 개선 제안 (Video & Audio Quality Improvement)**:
         - 현재 영상의 시각적/청각적 품질을 분석하고 개선하기 위한 구체적이고 즉시 실행 가능한(Actionable) 방법 제안.
         - **장비 추천(Equipment Recommendations)**: 채널 규모와 예산, 촬영 환경에 맞는 구체적인 장비 모델(예: 특정 카메라 바디/렌즈, 샷건/다이나믹 마이크, 조명 세팅 등)을 명시하여 추천.
         - **편집 기술(Editing Techniques)**: 영상의 완성도를 높일 수 있는 구체적인 편집 팁(예: LUT를 활용한 색보정(Color Grading), 컴프레서/EQ를 활용한 오디오 믹싱, 시청 유지율을 높이는 컷편집 리듬 등) 가이드.
 
-    11. **👀 타겟 시청자 교차 시청 채널 분석 (Audience Cross-Viewership Analysis)**:
+    13. **👀 타겟 시청자 교차 시청 채널 분석 (Audience Cross-Viewership Analysis)**:
         - '내 시청자가 시청하는 다른 채널(유사 채널 및 경쟁 채널)'의 트렌드와 인기 요인을 분석.
         - 해당 채널들의 성공적인 콘텐츠 포맷, 주제, 업로드 주기 등을 파악하여 실제 채널 운영에 적용할 수 있는 벤치마킹 포인트 도출.
         - 이를 바탕으로 현재 채널에 즉시 도입해 볼 수 있는 **구체적인 콘텐츠 제작 아이디어 및 채널 운영 전략**을 제안.
 
-    12. **📱 유튜브 쇼츠(Shorts) 연계 및 활용 전략 (Shorts Strategy)**:
+    14. **📱 유튜브 쇼츠(Shorts) 연계 및 활용 전략 (Shorts Strategy)**:
         - 현재 채널의 **가장 인기 있는 롱폼 콘텐츠(Top Performing Content)**를 기반으로 한 쇼츠(Shorts) 콘텐츠 구성 아이디어 제안.
         - 기존 롱폼 영상의 핵심 하이라이트를 60초 이내로 재가공(Repurposing)하거나 쇼츠 전용으로 기획할 수 있는 구체적인 아이디어를 **상세한 Bullet Point(글머리 기호)** 형태로 3~4가지(3-4 distinct Shorts concepts) 제시.
         - 각 쇼츠 아이디어별로 다음 4가지 요소를 반드시 포함하여 구체적으로 명시: 
@@ -240,26 +301,28 @@ ${rawData.recentVideos.map((v, i) => `      ${i+1}. "${v.title}" (조회수: ${v
     
     [중요: 알고리즘 인사이트 JSON 데이터]
     리포트 내용 어딘가에 반드시 아래 형식의 JSON 코드 블록을 포함해 주세요. 이 데이터는 UI의 신호등 상태를 표시하는 데 사용됩니다. 분석 결과에 따라 각 항목의 상태를 'green'(우수), 'yellow'(보통/개선필요), 'red'(위험/부족) 중 하나로 평가해 주세요.
+    algorithmInsights의 각 label 값은 한국어 짧은 구로만 쓰고, 영어·괄호 병기·슬래시 표기는 넣지 마세요.
     \`\`\`json
     {
       "algorithmInsights": [
-        { "label": "콘텐츠 성과 (Content Performance)", "status": "green" },
-        { "label": "수익화 전략 (Monetization)", "status": "yellow" },
-        { "label": "구독자 증가 (Subscriber Growth)", "status": "red" },
-        { "label": "SEO 및 알고리즘 (SEO/Algorithm)", "status": "green" },
-        { "label": "시청자 참여 (Audience Engagement)", "status": "yellow" }
+        { "label": "콘텐츠 성과", "status": "green" },
+        { "label": "수익화 전략", "status": "yellow" },
+        { "label": "구독자 성장", "status": "red" },
+        { "label": "SEO와 알고리즘", "status": "green" },
+        { "label": "시청자 참여", "status": "yellow" }
       ]
     }
     \`\`\`
 
-    Use Google Search to get the most up-to-date information about the channel's recent performance and trends.
-    Return the analysis in a structured, professional Markdown format.
+    Google 검색 도구를 사용해 채널의 최근 성과와 트렌드를 반영해 주세요.
+    출력은 구조가 분명한 전문 마크다운 형식으로만 작성해 주세요.
     
-    **중요**: 가독성을 위해 각 문단 사이에는 반드시 두 번의 줄바꿈(Double Line Break)을 사용하여 여백을 충분히 확보해 주세요. 소제목과 본문 사이에도 적절한 간격을 두어 시각적으로 편안하게 읽힐 수 있도록 구성해 주세요.
+    **중요**: 가독성을 위해 각 문단 사이에는 빈 줄을 한 줄 넣어(문단 구분) 여백을 충분히 확보해 주세요. 소제목과 본문 사이에도 적절한 간격을 두어 읽기 편하게 구성해 주세요.
+    ${buildStructuredReportRules('channel')}
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await getGeminiClient().models.generateContent({
       model: model,
       contents: prompt,
       config: {
@@ -294,7 +357,9 @@ ${rawData.recentVideos.map((v, i) => `      ${i+1}. "${v.title}" (조회수: ${v
       }
     }
 
-    return { text, sources: uniqueSources, algorithmInsights };
+    const apiUsage = buildGeminiApiUsageSummary(model, response.usageMetadata);
+
+    return { text, sources: uniqueSources, algorithmInsights, apiUsage };
   } catch (error) {
     console.error("Error analyzing channel:", error);
     throw error;
