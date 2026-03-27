@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   analyzeYouTubeChannel,
   analyzeYouTubeVideo,
@@ -235,78 +235,104 @@ export default function App() {
     return analyzeReportCompleteness(activeTab, currentAnalysis);
   }, [activeTab, currentAnalysis]);
 
+  const [compactChart, setCompactChart] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)');
+    const onChange = () => setCompactChart(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#F5F5F5] text-[#1A1A1A] font-sans selection:bg-orange-200">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="bg-red-600 p-2 rounded-lg">
-              <Youtube className="text-white w-6 h-6" />
+      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-md sm:px-6 sm:py-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-4">
+          <div className="flex min-w-0 items-center gap-2 md:shrink-0">
+            <div className="shrink-0 rounded-lg bg-red-600 p-2">
+              <Youtube className="h-6 w-6 text-white" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">채널인사이트</h1>
-          </div>
-          
-          <div className="flex bg-gray-100 p-1 rounded-full">
-            <button
-              onClick={() => setActiveTab('channel')}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
-                activeTab === 'channel' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black"
-              )}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              채널
-            </button>
-            <button
-              onClick={() => setActiveTab('video')}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
-                activeTab === 'video' ? "bg-white text-black shadow-sm" : "text-gray-500 hover:text-black"
-              )}
-            >
-              <Video className="w-4 h-4" />
-              영상
-            </button>
+            <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-xl">채널인사이트</h1>
           </div>
 
-          <form onSubmit={handleAnalyze} className="flex-1 max-w-xl flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input 
+          <div className="flex justify-center md:justify-start">
+            <div className="inline-flex w-full max-w-md rounded-full bg-gray-100 p-1 sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setActiveTab('channel')}
+                className={cn(
+                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition-all sm:flex-initial sm:px-4',
+                  activeTab === 'channel'
+                    ? 'bg-white text-black shadow-sm'
+                    : 'text-gray-500 hover:text-black',
+                )}
+              >
+                <LayoutDashboard className="h-4 w-4 shrink-0" />
+                <span>채널</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('video')}
+                className={cn(
+                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition-all sm:flex-initial sm:px-4',
+                  activeTab === 'video'
+                    ? 'bg-white text-black shadow-sm'
+                    : 'text-gray-500 hover:text-black',
+                )}
+              >
+                <Video className="h-4 w-4 shrink-0" />
+                <span>영상</span>
+              </button>
+            </div>
+          </div>
+
+          <form
+            onSubmit={handleAnalyze}
+            className="flex w-full flex-col gap-2 md:max-w-xl md:flex-1 md:flex-row md:items-stretch md:gap-2"
+          >
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
                 type="text"
+                enterKeyHint="search"
+                autoComplete="url"
+                inputMode="url"
                 value={currentUrl}
-                onChange={(e) => activeTab === 'channel' ? setUrl(e.target.value) : setVideoUrl(e.target.value)}
+                onChange={(e) =>
+                  activeTab === 'channel' ? setUrl(e.target.value) : setVideoUrl(e.target.value)
+                }
                 placeholder={
                   activeTab === 'channel'
-                    ? '채널 URL (예: youtube.com/@handle 또는 /channel/UC…)'
-                    : '영상 URL (예: youtube.com/watch?v=…)'
+                    ? '채널 URL (@핸들 또는 /channel/UC…)'
+                    : '영상 URL (watch?v=…)'
                 }
-                className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-full focus:ring-2 focus:ring-red-500 transition-all outline-none text-sm"
+                className="min-h-11 w-full rounded-full border-none bg-gray-100 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-red-500"
               />
             </div>
-            <button 
+            <button
+              type="submit"
               disabled={currentLoading}
-              className="bg-black text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="flex min-h-11 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full bg-black px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
             >
-              {currentLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : '분석'}
+              {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '분석'}
             </button>
           </form>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         <AnimatePresence mode="wait">
           {!currentAnalysis && !currentLoading && !currentError && (
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="flex flex-col items-center justify-center py-20 text-center"
+              className="flex flex-col items-center justify-center px-1 py-12 text-center sm:py-20"
             >
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 max-w-md">
+              <div className="w-full max-w-md rounded-3xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8">
                 <Sparkles className="w-12 h-12 text-orange-500 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold mb-2 text-gray-900 tracking-tight">분석을 시작하세요</h2>
+                <h2 className="mb-2 text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">분석을 시작하세요</h2>
                 <p className="text-gray-600 mb-3 text-[15px] leading-relaxed">
                   {activeTab === 'channel'
                     ? '상단에 YouTube 채널 URL을 입력하고 분석을 실행하면, 채널 성장과 시청 만족도를 함께 보는 한국어 전략 리포트가 생성됩니다.'
@@ -345,7 +371,7 @@ export default function App() {
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bg-red-50 border border-red-100 p-6 rounded-2xl text-red-600 max-w-2xl mx-auto text-center"
+              className="mx-auto max-w-2xl rounded-2xl border border-red-100 bg-red-50 px-4 py-6 text-center text-red-600 sm:px-6"
             >
               <Info className="w-8 h-8 mx-auto mb-2" />
               <p className="font-medium">{currentError}</p>
@@ -362,30 +388,30 @@ export default function App() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+              className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8"
             >
               {/* Sidebar Stats / Info */}
-              <div className="lg:col-span-1 space-y-6">
+              <div className="min-w-0 space-y-6 lg:col-span-1">
                 {activeTab === 'channel' ? (
-                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
-                      <BarChart3 className="w-4 h-4" /> 분석 핵심 지표
+                  <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+                    <h3 className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400">
+                      <BarChart3 className="h-4 w-4 shrink-0" /> 분석 핵심 지표
                     </h3>
                     <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
                       성장 진단 (P0)
                     </p>
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between p-3 rounded-2xl border border-amber-200/80 bg-amber-50/60">
-                        <span className="text-sm font-medium text-gray-800">초기 24시간 성과 진단</span>
-                        <span className="text-xs font-bold text-amber-800">CTR · 30초 훅</span>
+                      <div className="flex items-center justify-between gap-2 rounded-2xl border border-amber-200/80 bg-amber-50/60 p-3">
+                        <span className="min-w-0 text-sm font-medium text-gray-800">초기 24시간 성과 진단</span>
+                        <span className="shrink-0 text-xs font-bold text-amber-800">CTR · 30초 훅</span>
                       </div>
-                      <div className="flex items-center justify-between p-3 rounded-2xl border border-amber-200/80 bg-amber-50/60">
-                        <span className="text-sm font-medium text-gray-800">만족도 중심 진단 카드</span>
-                        <span className="text-xs font-bold text-amber-800">패키징 정합성</span>
+                      <div className="flex items-center justify-between gap-2 rounded-2xl border border-amber-200/80 bg-amber-50/60 p-3">
+                        <span className="min-w-0 text-sm font-medium text-gray-800">만족도 중심 진단 카드</span>
+                        <span className="shrink-0 text-xs font-bold text-amber-800">패키징 정합성</span>
                       </div>
-                      <div className="flex items-center justify-between p-3 rounded-2xl border border-amber-200/80 bg-amber-50/60">
-                        <span className="text-sm font-medium text-gray-800">실험형 7일 액션</span>
-                        <span className="text-xs font-bold text-amber-800">가설 · 지표</span>
+                      <div className="flex items-center justify-between gap-2 rounded-2xl border border-amber-200/80 bg-amber-50/60 p-3">
+                        <span className="min-w-0 text-sm font-medium text-gray-800">실험형 7일 액션</span>
+                        <span className="shrink-0 text-xs font-bold text-amber-800">가설 · 지표</span>
                       </div>
                     </div>
                     <p className="mb-3 mt-6 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
@@ -474,15 +500,15 @@ export default function App() {
 
                 <GeminiUsageCard lastRequest={currentApiUsage} session={sessionGeminiUsage} />
 
-                <div className="bg-black text-white p-6 rounded-3xl shadow-xl">
-                  <h3 className="text-xs font-bold uppercase tracking-widest opacity-50 mb-4 flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4" /> 알고리즘 인사이트 요약
+                <div className="rounded-3xl bg-black p-5 text-white shadow-xl sm:p-6">
+                  <h3 className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest opacity-50">
+                    <TrendingUp className="h-4 w-4 shrink-0" /> 알고리즘 인사이트 요약
                   </h3>
                   {currentAlgorithmInsights ? (
                     <div className="space-y-4">
                       {currentAlgorithmInsights.map((insight, idx) => (
-                        <div key={idx} className="flex items-center justify-between">
-                          <span className="text-sm opacity-90">{insight.label}</span>
+                        <div key={idx} className="flex items-center justify-between gap-2">
+                          <span className="min-w-0 flex-1 text-sm opacity-90">{insight.label}</span>
                           <div className="flex gap-1.5">
                             <div className={cn("w-3 h-3 rounded-full", insight.status === 'red' ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" : "bg-gray-700")} />
                             <div className={cn("w-3 h-3 rounded-full", insight.status === 'yellow' ? "bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.8)]" : "bg-gray-700")} />
@@ -514,16 +540,16 @@ export default function App() {
               </div>
 
               {/* Main Analysis Content */}
-              <div className="lg:col-span-2 space-y-6">
+              <div className="min-w-0 space-y-6 lg:col-span-2">
                 {activeTab === 'channel' && channelData && channelData.recentVideos.length > 0 && (
-                  <div className="bg-white p-8 md:p-12 rounded-[2rem] shadow-sm border border-gray-100">
-                    <div className="flex items-center gap-3 mb-8">
-                      <div className="p-3 bg-red-100 rounded-2xl">
-                        <BarChart3 className="w-6 h-6 text-red-600" />
+                  <div className="rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm sm:p-8 md:p-12">
+                    <div className="mb-6 flex items-center gap-3 sm:mb-8">
+                      <div className="rounded-2xl bg-red-100 p-3">
+                        <BarChart3 className="h-6 w-6 text-red-600" />
                       </div>
-                      <h2 className="text-2xl font-bold text-gray-900">최근 영상 성과 트렌드</h2>
+                      <h2 className="min-w-0 text-lg font-bold text-gray-900 sm:text-2xl">최근 영상 성과 트렌드</h2>
                     </div>
-                    <div className="h-[300px] w-full">
+                    <div className="h-[220px] w-full sm:h-[280px] md:h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart
                           data={[...channelData.recentVideos].reverse().map(v => ({
@@ -532,12 +558,16 @@ export default function App() {
                             likes: parseInt(v.likes, 10) || 0,
                             title: v.title
                           }))}
-                          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                          margin={
+                            compactChart
+                              ? { top: 4, right: 6, left: 0, bottom: 4 }
+                              : { top: 5, right: 28, left: 12, bottom: 5 }
+                          }
                         >
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} dy={10} />
-                          <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} tickFormatter={(value) => value >= 10000 ? `${(value / 10000).toFixed(0)}만` : value} />
-                          <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 12 }} tickFormatter={(value) => value >= 10000 ? `${(value / 10000).toFixed(0)}만` : value} />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: compactChart ? 10 : 12 }} dy={10} />
+                          <YAxis yAxisId="left" width={compactChart ? 28 : 36} axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: compactChart ? 10 : 12 }} tickFormatter={(value) => value >= 10000 ? `${(value / 10000).toFixed(0)}만` : value} />
+                          <YAxis yAxisId="right" orientation="right" width={compactChart ? 28 : 36} axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: compactChart ? 10 : 12 }} tickFormatter={(value) => value >= 10000 ? `${(value / 10000).toFixed(0)}만` : value} />
                           <Tooltip 
                             contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
                             labelStyle={{ fontWeight: 'bold', color: '#111827', marginBottom: '4px' }}
@@ -573,16 +603,17 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="bg-white p-8 md:p-12 rounded-[2rem] shadow-sm border border-gray-100">
-                  <div className="flex items-center justify-between mb-8">
-                    <h2 className="text-3xl font-black tracking-tighter">심층 분석</h2>
-                    <a 
-                      href={currentUrl} 
-                      target="_blank" 
+                <div className="rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm sm:p-8 md:p-12">
+                  <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
+                    <h2 className="text-2xl font-black tracking-tighter sm:text-3xl">심층 분석</h2>
+                    <a
+                      href={currentUrl}
+                      target="_blank"
                       rel="noopener noreferrer"
-                      className="text-gray-400 hover:text-red-600 transition-colors"
+                      className="inline-flex min-h-11 min-w-11 touch-manipulation items-center justify-center self-start text-gray-400 transition-colors hover:text-red-600 sm:self-auto"
+                      aria-label="원본 링크 열기"
                     >
-                      <ExternalLink className="w-5 h-5" />
+                      <ExternalLink className="h-5 w-5" />
                     </a>
                   </div>
 
@@ -716,23 +747,26 @@ export default function App() {
                       </div>
                     )}
                   
-                  <div id="report-content" className="prose prose-slate max-w-none 
-                    prose-headings:font-bold prose-headings:tracking-tight 
+                  <div
+                    id="report-content"
+                    className="prose prose-slate max-w-none min-w-0
+                    prose-headings:font-bold prose-headings:tracking-tight
                     prose-p:text-gray-700 prose-p:leading-loose prose-p:text-[15px]
                     prose-strong:font-bold prose-strong:text-gray-900
                     prose-a:text-red-600 hover:prose-a:text-red-700
-                    prose-ul:mt-4 prose-ul:mb-6 prose-li:my-2">
+                    prose-ul:mt-4 prose-ul:mb-6 prose-li:my-2"
+                  >
                     <AnalysisMarkdown content={currentAnalysis} />
                   </div>
                 </div>
 
                 {currentSources.length > 0 && (
-                  <div className="bg-white p-8 md:p-12 rounded-[2rem] shadow-sm border border-gray-100 mt-8">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-3 bg-blue-100 rounded-2xl">
-                        <Search className="w-6 h-6 text-blue-600" />
+                  <div className="mt-6 rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm sm:mt-8 sm:p-8 md:p-12">
+                    <div className="mb-6 flex items-center gap-3">
+                      <div className="rounded-2xl bg-blue-100 p-3">
+                        <Search className="h-6 w-6 text-blue-600" />
                       </div>
-                      <h2 className="text-2xl font-bold text-gray-900">참고 출처 · 팩트 체크</h2>
+                      <h2 className="min-w-0 text-lg font-bold text-gray-900 sm:text-2xl">참고 출처 · 팩트 체크</h2>
                     </div>
                     <p className="text-gray-600 mb-6 leading-relaxed">
                       AI가 분석을 위해 실제로 참고한 웹 문서 및 데이터 출처입니다. 할루시네이션 검증을 위해 직접 확인할 수 있습니다.
@@ -783,8 +817,8 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <footer className="border-t border-gray-100 mt-8">
-        <div className="max-w-7xl mx-auto px-6 py-4 text-center text-xs text-gray-400 space-y-1">
+      <footer className="mt-8 border-t border-gray-100 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-7xl space-y-1 px-4 py-4 text-center text-xs text-gray-400 sm:px-6">
           <p>© 2026 채널인사이트</p>
           <p>
             made with{' '}

@@ -4,3 +4,19 @@
 @theme {
   --font-sans: "Pretendard", "Inter", ui-sans-serif, system-ui, sans-serif;
 }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: clip;
+}
+
+#root {
+  min-height: 100dvh;
+  min-height: 100vh;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

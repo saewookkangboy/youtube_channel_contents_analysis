@@ -106,6 +106,30 @@ youtube_channel_contents_analysis/
    - `npm run preview` — 빌드 결과 미리보기  
    - `npm run lint` — TypeScript 타입 검사 (`tsc --noEmit`)
 
+## Vercel 배포
+
+프로젝트 루트의 [`vercel.json`](./vercel.json)은 Vite 빌드(`dist`)와 SPA용 리라이트를 지정합니다. 저장소를 Vercel에 연결하거나 [Vercel CLI](https://vercel.com/docs/cli)로 배포할 때 아래만 맞추면 됩니다.
+
+1. **프로젝트 가져오기**  
+   GitHub 등에서 이 저장소를 Import하고, **Root Directory**는 저장소 루트(기본값)로 둡니다.
+
+2. **환경 변수 (필수·빌드 시 주입)**  
+   `vite.config.ts`가 빌드 시 `GEMINI_API_KEY`를 번들에 넣고, `VITE_*`는 Vite 규칙대로 클라이언트에 노출됩니다. Vercel **Settings → Environment Variables**에 다음을 넣습니다.  
+   - **Production**과 **Preview**(PR 미리보기) 모두에 동일하게 두는 것을 권장합니다.
+
+   | 변수 | 필수 | 설명 |
+   | --- | --- | --- |
+   | `GEMINI_API_KEY` | 예 | Gemini 호출용. 빌드에 포함되므로 배포 전에 반드시 설정 |
+   | `VITE_YOUTUBE_API_KEY` | 아니오 | YouTube Data API 사용 시 |
+
+3. **배포**  
+   main 브랜치에 푸시하면 프로덕션 배포가, 다른 브랜치·PR은 프리뷰 URL이 생성됩니다.
+
+4. **배포 후 확인**  
+   사이트에서 분석 실행이 되는지 확인합니다. 키 누락 시 빌드는 되더라도 런타임에서 Gemini 초기화가 실패할 수 있으므로, 환경 변수 저장 후 **Redeploy**(캐시 없이 재빌드)가 필요할 수 있습니다.
+
+**보안 참고**: `GEMINI_API_KEY`는 현재 구조상 프런트 번들에 포함됩니다. 공개 저장소·프리뷰 URL까지 키가 노출될 수 있는 방식이므로, 운영에서는 키 회전·사용량 제한·(가능하면) 서버 프록시 등 정책을 검토하는 것이 좋습니다.
+
 ## 저작권 · 라이선스
 
 채널인사이트 애플리케이션 소스의 일부 파일(예: `src/App.tsx`)에는 **Apache License 2.0**(`SPDX-License-Identifier: Apache-2.0`) 표기가 포함되어 있습니다. 저장소 루트에 별도의 `LICENSE` 파일이 없다면, 배포·재사용 시 해당 SPDX 주석이 있는 파일의 라이선스 조건을 따르고, 필요하면 프로젝트 전체에 맞는 `LICENSE` 파일을 추가하는 것을 권장합니다.
