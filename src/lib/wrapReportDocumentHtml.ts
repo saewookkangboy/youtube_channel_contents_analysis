@@ -1,10 +1,20 @@
-export function wrapReportDocumentHtml(bodyInnerHtml: string): string {
+export interface WrapReportDocumentHtmlOptions {
+  lang?: string;
+  title?: string;
+}
+
+export function wrapReportDocumentHtml(
+  bodyInnerHtml: string,
+  options?: WrapReportDocumentHtmlOptions,
+): string {
+  const lang = options?.lang ?? "ko";
+  const title = options?.title ?? "채널인사이트 · 분석 리포트";
   return `<!DOCTYPE html>
-<html lang="ko">
+<html lang="${lang}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>채널인사이트 · 분석 리포트</title>
+  <title>${title.replace(/</g, "&lt;")}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
   <style>
     * { box-sizing: border-box; }

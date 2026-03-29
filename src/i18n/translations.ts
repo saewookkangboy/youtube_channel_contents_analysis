@@ -1,0 +1,318 @@
+import type { AppLocale } from './types';
+
+export type TranslationKey = keyof typeof ko;
+
+const ko = {
+  brandTitle: '채널인사이트',
+  tabChannel: '채널',
+  tabVideo: '영상',
+  langKo: '한국어',
+  langEn: 'English',
+  langToggleAria: '표시 언어 전환',
+  placeholderChannel: '채널 URL (@핸들 또는 /channel/UC…)',
+  placeholderVideo: '영상 URL (watch?v=…)',
+  analyze: '분석',
+  factsOnlyTitle: '팩트 우선',
+  factsOnlyHint:
+    '(API로 가져온 수치가 있을 때만 웹 검색·URL 도구 끄기 — 토큰·비용 절감)',
+  factsOnlyTooltip:
+    'YouTube Data API로 메타데이터를 가져온 경우에만 웹 도구를 끕니다. API 호출이 실패하면 자동으로 검색·URL 컨텍스트로 보완합니다.',
+  emptyStateTitle: '분석을 시작하세요',
+  emptyStateChannel:
+    '상단에 YouTube 채널 URL을 입력하고 분석을 실행하면, 채널 성장과 시청 만족도를 함께 보는 전략 리포트가 생성됩니다.',
+  emptyStateVideo:
+    '상단에 YouTube 영상 URL을 입력하고 분석을 실행하면, 해당 영상의 성과 해석과 패키징·알고리즘 관점의 실행 과제가 리포트로 정리됩니다.',
+  emptyStateScopeLead: '포함 범위(Agent.md 기준): ',
+  emptyStateScopeBody:
+    '초기 24시간 성과 진단, 제목·썸네일·오프닝 정합성, 알고리즘·SEO(표 형식), 우선 실행 7일 액션 플랜 등 고정 섹션을 유지합니다. API 키가 있으면 YouTube 메타데이터를, 없으면 검색·근거 링크로 보완합니다.',
+  loadingFacts: 'YouTube 팩트와 모델로 리포트를 작성하는 중입니다…',
+  loadingWeb: '웹 검색과 모델 추론으로 인사이트를 모으는 중입니다…',
+  retry: '다시 시도',
+  sidebarChannelMetrics: '분석 핵심 지표',
+  growthDiagP0: '성장 진단 (P0)',
+  metric24h: '초기 24시간 성과 진단',
+  metric24hBadge: 'CTR · 30초 훅',
+  metricSatisfaction: '만족도 중심 진단 카드',
+  metricSatisfactionBadge: '패키징 정합성',
+  metric7d: '실험형 7일 액션',
+  /** 비디오 사이드바 리포트 모듈 3행(플랜 표기) */
+  metric7dPlan: '실험형 7일 액션 플랜',
+  metric7dBadge: '가설 · 지표',
+  reportSections: '포함 리포트 섹션',
+  secPerformance: '성과 및 지표 분석',
+  secMonetization: '수익화 전략',
+  secAlgoThumb: '알고리즘, 태그 & 썸네일',
+  secTitles: '제목 전략 제안',
+  secEngagement: '시청자 참여 전략',
+  secSchedule: '최적 업로드 스케줄',
+  secSeries: '신규 시리즈 기획',
+  secQuality: '영상/오디오 품질 개선',
+  badgeEnhanced: '강화됨',
+  badgeIncluded: '포함됨',
+  videoApiMetrics: '영상 API 지표',
+  views: '조회수',
+  likes: '좋아요',
+  comments: '댓글 수',
+  reportModulesP0: '리포트 모듈 (P0)',
+  reportModulesHint:
+    '본문에 동일한 헤딩으로 포함됩니다. 누락 시 상단 경고 배너를 확인하세요.',
+  standard: '표준',
+  algoInsightsTitle: '알고리즘 인사이트 요약',
+  algoInsightsFallback:
+    '추천은 클릭 이후 시청 경험과 장기 만족도까지 함께 반영됩니다. CTR만이 아니라 유지·재방문·정합성을 함께 보완하는 것이 성장에 유리합니다.',
+  kpiTitle: '운영 개선 KPI',
+  kpiSubtitle: '조회 대비 참여·반응 비율과 채널 맥락(최근 vs 평균)을 함께 봅니다.',
+  kpiBasis: '기준:',
+  kpiEngagement: '참여율',
+  kpiLikeRate: '좋아요율',
+  kpiCommentRate: '댓글율',
+  kpiHintEngagement: '(좋아요+댓글)÷조회',
+  kpiHintLike: '좋아요÷조회',
+  kpiHintComment: '댓글÷조회',
+  kpiRecentVsAvg: '최근 vs 채널 평균 조회',
+  kpiHintRecentVs: '최근 평균 조회 ÷ 채널 전체 평균',
+  kpiScopeVideo: '선택한 영상 1건',
+  kpiScopeChannel: (n: number) => `최근 업로드 ${n}개 합산`,
+  kpiFootnoteNoViewsVideo: '조회수가 없어 비율을 계산할 수 없습니다.',
+  kpiFootnoteLowVideo:
+    '비율이 낮으면 썸네일·첫 30초·CTA(좋아요·댓글 유도)를 점검해 보세요.',
+  kpiFootnoteNoViewsChannel: '최근 영상에 조회 데이터가 없어 비율을 계산할 수 없습니다.',
+  kpiFootnoteLowChannel:
+    '최근 평균 조회가 채널 평균보다 낮으면 제목·썸네일·업로드 주기를 우선 점검하는 편이 좋습니다.',
+  kpiFootnoteNeedApi:
+    'VITE_YOUTUBE_API_KEY로 분석을 실행하면 조회·좋아요·댓글 기준으로 위 지표가 채워집니다.',
+  chartTitle: '최근 영상 성과 트렌드',
+  chartLineViews: '조회수',
+  chartLineLikes: '좋아요',
+  chartFootnote:
+    '* YouTube API를 통해 수집된 가장 최근 업로드 영상 5개의 조회수 및 좋아요 추이입니다.',
+  deepAnalysis: '심층 분석',
+  openOriginalAria: '원본 링크 열기',
+  completenessTitle: '보고서 필수 섹션 일부가 누락된 것으로 감지되었습니다',
+  completenessAfterAgent:
+    '의 고정 템플릿 기준 {count}개 항목이 헤딩에서 찾아지지 않았습니다. 모델 출력이 잘렸거나 제목 표기가 달라졌을 수 있습니다. 아래를 보완하거나 다시 분석해 주세요.',
+  completenessAgentMd: 'Agent.md',
+  reanalyze: '다시 분석',
+  algoTableMissingTitle: '알고리즘/SEO 섹션에 Markdown 표가 없습니다',
+  algoTableMissingBody:
+    '헤딩은 감지되었지만, Markdown 표(헤더 행 + |---|---| 구분 행)이 본문에서 찾아지지 않았습니다. 체크리스트 표를 포함하도록 다시 분석하거나 직접 추가해 주세요.',
+  checklistHeaderTitle: '알고리즘/SEO 체크리스트 표 헤더가 템플릿과 맞지 않습니다',
+  checklistHeaderBody:
+    '표는 있으나 첫 번째 표 헤더에 다음 열 키워드가 빠졌거나 표기가 다릅니다. 프롬프트의 3열 구조(최적화 항목 · 현재 상태 진단 · 구체적인 개선 방안)에 맞추거나 다시 분석해 주세요.',
+  sourcesTitle: '참고 출처 · 팩트 체크',
+  sourcesBody:
+    'AI가 분석을 위해 실제로 참고한 웹 문서 및 데이터 출처입니다. 할루시네이션 검증을 위해 직접 확인할 수 있습니다.',
+  downloadMd: '마크다운(MD) 다운로드',
+  viewWeb: '웹 페이지로 보기',
+  reportEnd: '분석 리포트 끝',
+  footerCopy: '© 2026 채널인사이트',
+  footerMade: 'made with',
+  errNoGeminiKey:
+    'Gemini API 키가 없습니다. 프로젝트 루트에 .env 또는 .env.local을 만들고 GEMINI_API_KEY를 설정한 뒤 개발 서버를 다시 실행해 주세요.',
+  errChannelFailed: '채널 분석에 실패했습니다. URL을 확인한 뒤 다시 시도해 주세요.',
+  errVideoFailed: '영상 분석에 실패했습니다. URL을 확인한 뒤 다시 시도해 주세요.',
+  resultEmpty: '분석 결과가 비어 있습니다. 잠시 후 다시 시도해 주세요.',
+  downloadFilenameChannel: '유튜브_채널_분석.md',
+  downloadFilenameVideo: '유튜브_영상_분석.md',
+  usageCardTitle: 'Gemini API 사용량',
+  usageCardBlurbBefore: '실제 응답의 토큰 메타데이터와 ',
+  usageCardBlurbAfter: ' 단가표 기준 추정 비용입니다. 청구서와 다를 수 있습니다.',
+  usageNoMetadata:
+    '이 응답에는 토큰 메타데이터가 포함되지 않았습니다. SDK·모델 버전에 따라 제공되지 않을 수 있습니다.',
+  usageModel: '모델',
+  usagePromptTokens: '프롬프트 토큰',
+  usageCacheInput: '· 캐시 입력',
+  usageOutputTokens: '출력 토큰',
+  usageReasoningTokens: '· 추론(생각) 토큰',
+  usageTotalTokens: '합계 토큰',
+  usageEstCost: '추정 비용',
+  usagePricingMissing: '단가 미등록 모델',
+  usageCalcUnavailable: '계산 불가',
+  usageRunOnceHint: '분석을 한 번 실행하면 마지막 호출의 사용량이 표시됩니다.',
+  usageSessionLabel: '이 페이지 세션 누적',
+  usageSessionNone: '아직 기록된 Gemini 호출이 없습니다.',
+  usageCalls: '호출 수',
+  usageCallsSuffix: '회',
+  usageCumulativePrompt: '누적 프롬프트',
+  usageCumulativeOutput: '누적 출력',
+  usageCumulativeReasoning: '누적 추론',
+  usageCumulativeCost: '누적 추정 비용',
+  completenessGapOptimization: '최적화 항목 열',
+  completenessGapStatus: '현재 상태 진단 열',
+  completenessGapActions: '구체적인 개선 방안 열',
+  appendixMissingTitle: '### 자동 검증 부록 (템플릿 헤딩 누락)',
+  appendixMissingIntro: '다음 섹션 제목이 보고서에서 찾기 어렵습니다:',
+  appendixAlgoTableLine:
+    '- [검증] 알고리즘/SEO 구간에 Markdown 표(헤더 + `|---|` 구분 행)가 감지되지 않았습니다.',
+  appendixChecklistIntro: '- [검증] 체크리스트 표 헤더 불완전:',
+  reportViewerTitle: '채널인사이트 · 분석 리포트',
+} as const;
+
+const en: Record<TranslationKey, string | ((n: number) => string)> = {
+  brandTitle: 'Channel Insight',
+  tabChannel: 'Channel',
+  tabVideo: 'Video',
+  langKo: '한국어',
+  langEn: 'English',
+  langToggleAria: 'Switch display language',
+  placeholderChannel: 'Channel URL (@handle or /channel/UC…)',
+  placeholderVideo: 'Video URL (watch?v=…)',
+  analyze: 'Analyze',
+  factsOnlyTitle: 'Facts first',
+  factsOnlyHint:
+    '(When API metrics are available, disable web search & URL tools — saves tokens and cost)',
+  factsOnlyTooltip:
+    'Web tools are disabled only when metadata was fetched via YouTube Data API. If the API call fails, search and URL context are used automatically.',
+  emptyStateTitle: 'Start an analysis',
+  emptyStateChannel:
+    'Enter a YouTube channel URL above and run analysis to generate a strategy report covering growth and viewer satisfaction.',
+  emptyStateVideo:
+    'Enter a YouTube video URL above and run analysis to get performance interpretation plus packaging and algorithm action items in one report.',
+  emptyStateScopeLead: 'Scope (per Agent.md): ',
+  emptyStateScopeBody:
+    'Fixed sections include first-24h diagnostics, title·thumbnail·opening alignment, algorithm & SEO (table), and a prioritized 7-day action plan. With an API key we use YouTube metadata; otherwise search and source links fill gaps.',
+  loadingFacts: 'Building the report from YouTube facts and the model…',
+  loadingWeb: 'Gathering insights via web search and model reasoning…',
+  retry: 'Try again',
+  sidebarChannelMetrics: 'Key analysis metrics',
+  growthDiagP0: 'Growth diagnostics (P0)',
+  metric24h: 'First 24h performance diagnostics',
+  metric24hBadge: 'CTR · first 30s hook',
+  metricSatisfaction: 'Satisfaction-centered diagnostic card',
+  metricSatisfactionBadge: 'Packaging fit',
+  metric7d: 'Experimental 7-day actions',
+  metric7dPlan: '7-day experimental action plan',
+  metric7dBadge: 'Hypothesis · metrics',
+  reportSections: 'Report sections included',
+  secPerformance: 'Performance & metrics',
+  secMonetization: 'Monetization strategy',
+  secAlgoThumb: 'Algorithm, tags & thumbnails',
+  secTitles: 'Title strategy suggestions',
+  secEngagement: 'Viewer engagement strategy',
+  secSchedule: 'Optimal upload schedule',
+  secSeries: 'New series planning',
+  secQuality: 'Video/audio quality improvements',
+  badgeEnhanced: 'Enhanced',
+  badgeIncluded: 'Included',
+  videoApiMetrics: 'Video API metrics',
+  views: 'Views',
+  likes: 'Likes',
+  comments: 'Comments',
+  reportModulesP0: 'Report modules (P0)',
+  reportModulesHint:
+    'These appear in the body under the same headings. If something is missing, check the warning banner above.',
+  standard: 'Standard',
+  algoInsightsTitle: 'Algorithm insights summary',
+  algoInsightsFallback:
+    'Recommendations reflect post-click viewing and long-term satisfaction, not CTR alone. Improving retention, return visits, and promise-delivery fit tends to help growth.',
+  kpiTitle: 'Operational KPIs',
+  kpiSubtitle: 'Engagement vs views plus channel context (recent vs average).',
+  kpiBasis: 'Basis:',
+  kpiEngagement: 'Engagement rate',
+  kpiLikeRate: 'Like rate',
+  kpiCommentRate: 'Comment rate',
+  kpiHintEngagement: '(likes+comments)÷views',
+  kpiHintLike: 'likes÷views',
+  kpiHintComment: 'comments÷views',
+  kpiRecentVsAvg: 'Recent vs channel avg. views',
+  kpiHintRecentVs: 'recent avg views ÷ channel avg views',
+  kpiScopeVideo: 'Selected video (1)',
+  kpiScopeChannel: (n: number) => `Last ${n} uploads (aggregated)`,
+  kpiFootnoteNoViewsVideo: 'No views data; cannot compute rates.',
+  kpiFootnoteLowVideo:
+    'If rates are low, review thumbnail, first 30s, and CTAs for likes and comments.',
+  kpiFootnoteNoViewsChannel: 'No view data on recent videos; cannot compute rates.',
+  kpiFootnoteLowChannel:
+    'If recent average views trail the channel average, prioritize title, thumbnail, and upload cadence.',
+  kpiFootnoteNeedApi:
+    'Run analysis with VITE_YOUTUBE_API_KEY to populate these metrics from views, likes, and comments.',
+  chartTitle: 'Recent video performance trend',
+  chartLineViews: 'Views',
+  chartLineLikes: 'Likes',
+  chartFootnote:
+    '* Views and likes for the five most recent uploads from the YouTube API.',
+  deepAnalysis: 'Deep analysis',
+  openOriginalAria: 'Open original link',
+  completenessTitle: 'Some required report sections appear missing',
+  completenessAfterAgent:
+    'Under its fixed template, {count} section heading(s) were not found in the document. The model output may have been truncated or headings renamed. Review the list below or run analysis again.',
+  completenessAgentMd: 'Agent.md',
+  reanalyze: 'Analyze again',
+  algoTableMissingTitle: 'No Markdown table in the Algorithm/SEO section',
+  algoTableMissingBody:
+    'The heading was found, but no Markdown table (header row + |---|---| separator) appeared in that section. Re-run analysis to include the checklist table or add it manually.',
+  checklistHeaderTitle: 'Algorithm/SEO checklist table headers do not match the template',
+  checklistHeaderBody:
+    'A table exists, but the first header row is missing or differs for these column keywords. Align with the 3-column structure (optimization item · current status · specific improvements) or re-run analysis.',
+  sourcesTitle: 'Sources & fact check',
+  sourcesBody:
+    'Web documents and data the model actually used. Open them to verify claims and reduce hallucination risk.',
+  downloadMd: 'Download Markdown',
+  viewWeb: 'View as web page',
+  reportEnd: 'End of report',
+  footerCopy: '© 2026 Channel Insight',
+  footerMade: 'made with',
+  errNoGeminiKey:
+    'No Gemini API key. Create .env or .env.local in the project root, set GEMINI_API_KEY, and restart the dev server.',
+  errChannelFailed: 'Channel analysis failed. Check the URL and try again.',
+  errVideoFailed: 'Video analysis failed. Check the URL and try again.',
+  resultEmpty: 'The analysis result was empty. Please try again shortly.',
+  downloadFilenameChannel: 'youtube_channel_analysis.md',
+  downloadFilenameVideo: 'youtube_video_analysis.md',
+  usageCardTitle: 'Gemini API usage',
+  usageCardBlurbBefore: 'Estimated cost from token metadata in the response and the ',
+  usageCardBlurbAfter: ' price table. May differ from your invoice.',
+  usageNoMetadata:
+    'This response did not include token metadata. Some SDK or model versions omit it.',
+  usageModel: 'Model',
+  usagePromptTokens: 'Prompt tokens',
+  usageCacheInput: '· Cached input',
+  usageOutputTokens: 'Output tokens',
+  usageReasoningTokens: '· Reasoning tokens',
+  usageTotalTokens: 'Total tokens',
+  usageEstCost: 'Est. cost',
+  usagePricingMissing: 'Pricing not registered',
+  usageCalcUnavailable: 'Unable to calculate',
+  usageRunOnceHint: 'Run analysis once to see usage for the last call.',
+  usageSessionLabel: 'Session total (this page)',
+  usageSessionNone: 'No Gemini calls recorded yet.',
+  usageCalls: 'Calls',
+  usageCallsSuffix: ' calls',
+  usageCumulativePrompt: 'Cumulative prompt',
+  usageCumulativeOutput: 'Cumulative output',
+  usageCumulativeReasoning: 'Cumulative reasoning',
+  usageCumulativeCost: 'Cumulative est. cost',
+  completenessGapOptimization: 'Optimization item column',
+  completenessGapStatus: 'Current status column',
+  completenessGapActions: 'Specific improvement actions column',
+  appendixMissingTitle: '### Auto-check appendix (missing template headings)',
+  appendixMissingIntro: 'These section headings were hard to find in the report:',
+  appendixAlgoTableLine:
+    '- [check] No Markdown table (header + `|---|` separator) detected in the Algorithm/SEO section.',
+  appendixChecklistIntro: '- [check] Checklist table header incomplete:',
+  reportViewerTitle: 'Channel Insight · Analysis report',
+};
+
+const LOCALES: Record<AppLocale, Record<TranslationKey, string | ((n: number) => string)>> = {
+  ko,
+  en,
+};
+
+export function translate(
+  locale: AppLocale,
+  key: TranslationKey,
+  arg?: number | Record<string, string | number>,
+): string {
+  const raw = LOCALES[locale][key];
+  if (typeof raw === 'function') {
+    return (raw as (n: number) => string)(arg as number);
+  }
+  let s = raw as string;
+  if (arg !== undefined && typeof arg === 'object' && arg !== null && !Array.isArray(arg)) {
+    const params = arg as Record<string, string | number>;
+    for (const [k, v] of Object.entries(params)) {
+      s = s.replaceAll(`{${k}}`, String(v));
+    }
+  }
+  return s;
+}

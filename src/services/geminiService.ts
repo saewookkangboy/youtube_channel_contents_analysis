@@ -24,6 +24,8 @@ export interface AnalysisResult {
 /** `factsOnly`는 YouTube API로 rawData를 확보했을 때만 적용된다(미확보 시 자동으로 웹 도구 사용). */
 export interface GeminiAnalysisOptions {
   factsOnly?: boolean;
+  /** UI 언어와 맞춰 리포트 본문·헤딩·JSON 라벨 언어를 맞춘다. 기본 ko. */
+  outputLocale?: "ko" | "en";
 }
 
 function shouldUseWebGroundingTools(
@@ -34,10 +36,26 @@ function shouldUseWebGroundingTools(
   return !factsOnly;
 }
 
-function buildStructuredReportRules(reportType: 'channel' | 'video'): string {
-  const scopeLabel = reportType === 'channel' ? '채널 분석 보고서' : '영상 분석 보고서';
-  const minSectionCount = reportType === 'channel' ? 15 : 8;
+function buildStructuredReportRules(reportType: "channel" | "video", locale: "ko" | "en"): string {
+  const minSectionCount = reportType === "channel" ? 15 : 8;
 
+  if (locale === "en") {
+    const scopeLabel = reportType === "channel" ? "Channel analysis report" : "Video analysis report";
+    return `
+[Output rules — ${scopeLabel}]
+Use Markdown ##/###. Keep emoji + numbering style. Each major section: at least 3 actionable bullets (what / how / expected impact). If evidence is weak, write "No data". Use GFM tables where instructed. Required headings (English): "## 🕒 First 24 Hours Performance Diagnostics", "## 🎯 Satisfaction-Centered Diagnostic Card", and finish with "## ✅ Priority 7-Day Action Plan".
+[Required — "## ✅ Priority 7-Day Action Plan" format]
+- Do **not** use one single ordered list for all 7 days. Use **### subheadings per day** (e.g. "### Day 1 — Title/thumbnail A/B").
+- Under each day, include these four bullets; **each bullet must be at least 2 sentences** (do not cram hypothesis/change/metrics/criteria into one line).
+  - **Hypothesis**: tie to prior diagnosis, causal claim to test, why this experiment.
+  - **Concrete change & execution**: where (title, thumbnail, first 30s, etc.), order of operations, **copy-pasteable lines, shot ideas, edit beats**.
+  - **Metrics**: primary + secondary in Studio, when to check (e.g. 24–48h after publish).
+  - **Success criteria**: numbers/ratios/timebox, scale or hold if met, pivot/stop if missed.
+- Vary daily focus (packaging vs opening vs Shorts bridge) if helpful, but keep depth consistent across all 7 days.
+Section count ≥ ${minSectionCount}. Entire report in English.`;
+  }
+
+  const scopeLabel = reportType === "channel" ? "채널 분석 보고서" : "영상 분석 보고서";
   return `
 [출력 규칙 - ${scopeLabel}]
 Markdown ##/### 고정, 이모지·번호 형식 유지. 주요 섹션마다 실행 불릿 3개 이상(무엇/어떻게/기대효과). 근거 부족 시 "데이터 없음". 표 지시 구간은 GFM 표. 필수: "## 🕒 초기 24시간 성과 진단", "## 🎯 만족도 중심 진단 카드", 마지막 "## ✅ 우선 실행 액션 플랜 (7일)".
@@ -52,9 +70,72 @@ Markdown ##/### 고정, 이모지·번호 형식 유지. 주요 섹션마다 실
 섹션 수 ≥ ${minSectionCount}. 한국어 위주.`;
 }
 
-/** UI용 algorithmInsights JSON 예시(토큰 절약용 한 줄) */
-const ALGORITHM_INSIGHTS_JSON_HINT =
-  '{"algorithmInsights":[{"label":"항목1","status":"green"},{"label":"항목2","status":"yellow"}]}';
+function outputLanguageBlock(locale: "ko" | "en"): string {
+  if (locale === "en") {
+    return `
+[OUTPUT LANGUAGE — ENGLISH]
+Write the **entire** markdown report in clear, natural **English** (headings, body, tables, bullets). Keep the same section order and emoji/numbering scheme as in the template below; translate section titles into English in the rendered headings.
+Use **"No data"** (English) instead of Korean when information is missing.
+`;
+  }
+  return `
+[출력 언어 — 한국어]
+보고서 **전체**(제목·본문·표·불릿)를 **한국어**로 작성합니다. 근거가 부족하면 "데이터 없음"을 사용합니다.
+`;
+}
+
+function algorithmInsightsJsonHint(locale: "ko" | "en"): string {
+  if (locale === "en") {
+    return '{"algorithmInsights":[{"label":"CTR packaging","status":"green"},{"label":"Retention risk","status":"yellow"}]}';
+  }
+  return '{"algorithmInsights":[{"label":"항목1","status":"green"},{"label":"항목2","status":"yellow"}]}';
+}
+
+function algorithmInsightsJsonInstruction(locale: "ko" | "en", reportKind: "channel" | "video"): string {
+  const hint = algorithmInsightsJsonHint(locale);
+  if (locale === "en") {
+    const countHint = reportKind === "channel" ? "About 5 items fit a channel report." : "About 5 items fit a video report.";
+    return `
+    [Algorithm insights JSON — UI traffic lights · required]
+    At the **very end** of the response, add **only one** \`\`\`json code block. Inside: a single valid JSON object with the key algorithmInsights only. Each item is {label, status}; status is green|yellow|red; label must be a **short English phrase** (no Korean, parentheses, or slashes). ${countHint} Do not put these instructions inside the JSON.
+    Example: \`\`\`json\n${hint}\n\`\`\`
+    `;
+  }
+  const countHint =
+    reportKind === "channel"
+      ? "채널 분석 시 항목 5개 전후가 적절."
+      : "영상 분석 시 항목 5개 전후가 적절.";
+  return `
+    [알고리즘 인사이트 JSON — UI 신호등용 · 필수]
+    응답 **맨 마지막**에 단독으로 \`\`\`json 코드블록 1개**만** 추가한다. 블록 안은 **유효한 JSON 객체 한 덩어리**이며 키는 algorithmInsights만 사용한다. 각 항목은 {label, status}, status는 green|yellow|red, label은 한국어 짧은 구만(영문·괄호·슬래시 금지). ${countHint} 위 설명 문장은 JSON 밖에 쓰지 말 것.
+    형식 예: \`\`\`json\n${hint}\n\`\`\`
+    `;
+}
+
+function webToolCopy(
+  locale: "ko" | "en",
+  mode: "channel" | "video",
+  useWebTools: boolean,
+): string {
+  if (locale === "en") {
+    if (mode === "video") {
+      return useWebTools
+        ? `Use Google Search to add context; if it conflicts with FACT_PACKET numbers, prefer FACT_PACKET.`
+        : `[Tools: facts only] Do not use Google Search. Write from FACT_PACKET, description, tags, and general YouTube best practices only. Mark uncertainty as "No data".`;
+    }
+    return useWebTools
+      ? `Use Google Search and URL context for trends; if it conflicts with FACT_PACKET numbers, prefer FACT_PACKET.`
+      : `[Tools: facts only] Do not use Google Search or URL context. Write from FACT_PACKET, channel URL context, and best practices. Avoid web-dependent claims; use "No data" when needed.`;
+  }
+  if (mode === "video") {
+    return useWebTools
+      ? `Google 검색 도구로 영상 맥락·트렌드를 보조 반영하되, FACT_PACKET 수치와 충돌하면 FACT_PACKET을 우선한다.`
+      : `[도구 모드: 팩트 전용] Google 검색 도구를 사용하지 않는다. FACT_PACKET·제공된 설명·태그와 일반적인 유튜브 베스트 프랙티스만으로 작성한다. 외부 웹 근거·실시간 트렌드 주장은 하지 않고, 불확실하면 "데이터 없음"으로 표시한다.`;
+  }
+  return useWebTools
+    ? `Google 검색·URL 컨텍스트로 트렌드·맥락을 보조하되, FACT_PACKET 수치와 충돌하면 FACT_PACKET을 우선한다.`
+    : `[도구 모드: 팩트 전용] Google 검색·URL 컨텍스트 도구를 사용하지 않는다. FACT_PACKET·채널 URL 맥락과 일반 베스트 프랙티스만으로 작성한다. 경쟁 채널·실시간 트렌드 등 웹 근거가 필요한 주장은 추정하지 말고 "데이터 없음"으로 표시한다.`;
+}
 
 function parseAlgorithmInsightsPayload(parsed: unknown): AlgorithmInsight[] | null {
   if (!parsed || typeof parsed !== "object") return null;
@@ -115,19 +196,34 @@ export async function analyzeYouTubeVideo(
   const factBlock = rawData ? buildVideoFactPacket(rawData) : "";
   const semanticGroundingBlock = rawData ? await buildVideoKoreanSemanticGroundingBlock(rawData) : "";
   const useWebTools = shouldUseWebGroundingTools(rawData, options?.factsOnly);
-  const webToolInstruction = useWebTools
-    ? `Google 검색 도구로 영상 맥락·트렌드를 보조 반영하되, FACT_PACKET 수치와 충돌하면 FACT_PACKET을 우선한다.`
-    : `[도구 모드: 팩트 전용] Google 검색 도구를 사용하지 않는다. FACT_PACKET·제공된 설명·태그와 일반적인 유튜브 베스트 프랙티스만으로 작성한다. 외부 웹 근거·실시간 트렌드 주장은 하지 않고, 불확실하면 "데이터 없음"으로 표시한다.`;
+  const locale = options?.outputLocale === "en" ? "en" : "ko";
+  const webToolLine = webToolCopy(locale, "video", useWebTools);
+  const videoRoleIntro =
+    locale === "en"
+      ? `You are a top YouTube content strategist and prompt engineer.\nAnalyze the following YouTube video URL and produce a detailed strategy report the creator can use immediately.`
+      : `당신은 세계 최고의 유튜브 콘텐츠 전략가이자 AI 프롬프트 엔지니어입니다.\n다음 유튜브 영상 URL을 분석하고, 크리에이터가 즉시 활용할 수 있는 상세한 전략 리포트를 작성해 주세요.`;
+  const videoSectionLanguage =
+    locale === "en"
+      ? "Follow the section numbering and emoji markers below; write the full report in professional markdown."
+      : "아래 섹션 번호·이모지·제목 형식을 그대로 지키고, 전문적인 마크다운 보고서를 한국어로 작성해 주세요.";
+  const readabilityImportant =
+    locale === "en"
+      ? "**Important**: Add a blank line between paragraphs and after subheadings for readability."
+      : "**중요**: 가독성을 위해 각 문단 사이에는 빈 줄을 한 줄 넣어(문단 구분) 여백을 충분히 확보해 주세요. 소제목과 본문 사이에도 적절한 간격을 두어 읽기 편하게 구성해 주세요.";
+  const outputFormatOnly =
+    locale === "en"
+      ? "Output structured, professional markdown only."
+      : "출력은 구조가 분명한 전문 마크다운 형식으로만 작성해 주세요.";
 
   const prompt = `
-    당신은 세계 최고의 유튜브 콘텐츠 전략가이자 AI 프롬프트 엔지니어입니다.
-    다음 유튜브 영상 URL을 분석하고, 크리에이터가 즉시 활용할 수 있는 상세한 전략 리포트를 작성해 주세요.
+    ${outputLanguageBlock(locale)}
+    ${videoRoleIntro}
     
     URL: ${videoUrl}
     ${factBlock ? `${factBlock}\n` : ""}
     ${semanticGroundingBlock ? `${semanticGroundingBlock}\n` : ""}
 
-    아래 섹션 번호·이모지·제목 형식을 그대로 지키고, 전문적인 마크다운 보고서를 한국어로 작성해 주세요.
+    ${videoSectionLanguage}
 
     0. **🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)**:
        - FACT_PACKET이 있으면 해당 JSON 수치·텍스트를 먼저 그대로 인용·나열한다. 없으면 검색·도구로 확보한 맥락을 "추정/출처"로 구분해 명시한다.
@@ -175,15 +271,13 @@ export async function analyzeYouTubeVideo(
          - **Call-to-Action (CTA)**: 롱폼 본편 시청이나 구독을 유도하는 명확한 액션 플랜
          - **썸네일 내 CTA 문구 추천 (Thumbnail CTA Text)**: 각 쇼츠 컨셉의 썸네일(또는 영상 내 텍스트 오버레이)에 포함할 구체적이고 강력한 Call-to-Action 텍스트 추천.
 
-    [알고리즘 인사이트 JSON — UI 신호등용 · 필수]
-    응답 **맨 마지막**에 단독으로 \`\`\`json 코드블록 1개**만** 추가한다. 블록 안은 **유효한 JSON 객체 한 덩어리**이며 키는 algorithmInsights만 사용한다. 각 항목은 {label, status}, status는 green|yellow|red, label은 한국어 짧은 구만(영문·괄호·슬래시 금지). 영상 분석 시 항목 5개 전후가 적절. 위 설명 문장은 JSON 밖에 쓰지 말 것.
-    형식 예: \`\`\`json\n${ALGORITHM_INSIGHTS_JSON_HINT}\n\`\`\`
+    ${algorithmInsightsJsonInstruction(locale, "video")}
 
-    ${webToolInstruction}
-    출력은 구조가 분명한 전문 마크다운 형식으로만 작성해 주세요.
+    ${webToolLine}
+    ${outputFormatOnly}
     
-    **중요**: 가독성을 위해 각 문단 사이에는 빈 줄을 한 줄 넣어(문단 구분) 여백을 충분히 확보해 주세요. 소제목과 본문 사이에도 적절한 간격을 두어 읽기 편하게 구성해 주세요.
-    ${buildStructuredReportRules('video')}
+    ${readabilityImportant}
+    ${buildStructuredReportRules("video", locale)}
   `;
 
   try {
@@ -228,16 +322,32 @@ export async function analyzeYouTubeChannel(
   const factBlock = rawData ? buildChannelFactPacket(rawData) : "";
   const semanticGroundingBlock = rawData ? await buildChannelKoreanSemanticGroundingBlock(rawData) : "";
   const useWebTools = shouldUseWebGroundingTools(rawData, options?.factsOnly);
-  const webToolInstruction = useWebTools
-    ? `Google 검색·URL 컨텍스트로 트렌드·맥락을 보조하되, FACT_PACKET 수치와 충돌하면 FACT_PACKET을 우선한다.`
-    : `[도구 모드: 팩트 전용] Google 검색·URL 컨텍스트 도구를 사용하지 않는다. FACT_PACKET·채널 URL 맥락과 일반 베스트 프랙티스만으로 작성한다. 경쟁 채널·실시간 트렌드 등 웹 근거가 필요한 주장은 추정하지 말고 "데이터 없음"으로 표시한다.`;
+  const locale = options?.outputLocale === "en" ? "en" : "ko";
+  const webToolLine = webToolCopy(locale, "channel", useWebTools);
+  const channelTaskIntro =
+    locale === "en"
+      ? `Perform a deep analysis of the following YouTube channel: ${channelUrl}`
+      : `다음 YouTube 채널을 심층 분석해 주세요: ${channelUrl}`;
+  const channelSectionLanguage =
+    locale === "en"
+      ? "Follow the section numbering and emoji markers below; write the full report in professional markdown."
+      : "아래 섹션 번호·이모지·제목 형식을 그대로 지키고, 전문적인 마크다운 보고서를 한국어로 작성해 주세요.";
+  const readabilityImportantCh =
+    locale === "en"
+      ? "**Important**: Add a blank line between paragraphs and after subheadings for readability."
+      : "**중요**: 가독성을 위해 각 문단 사이에는 빈 줄을 한 줄 넣어(문단 구분) 여백을 충분히 확보해 주세요. 소제목과 본문 사이에도 적절한 간격을 두어 읽기 편하게 구성해 주세요.";
+  const outputFormatOnlyCh =
+    locale === "en"
+      ? "Output structured, professional markdown only."
+      : "출력은 구조가 분명한 전문 마크다운 형식으로만 작성해 주세요.";
 
   const prompt = `
-    다음 YouTube 채널을 심층 분석해 주세요: ${channelUrl}
+    ${outputLanguageBlock(locale)}
+    ${channelTaskIntro}
     ${factBlock ? `${factBlock}\n` : ""}
     ${semanticGroundingBlock ? `${semanticGroundingBlock}\n` : ""}
     
-    아래 섹션 번호·이모지·제목 형식을 그대로 지키고, 전문적인 마크다운 보고서를 한국어로 작성해 주세요.
+    ${channelSectionLanguage}
     
     0. **🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)**:
        - FACT_PACKET이 있으면 JSON의 구독자·총조회·영상수·최근 영상(rv) 수치를 먼저 그대로 인용·나열한다. 없으면 검색·도구 결과를 "추정/출처"로 구분해 명시한다.
@@ -319,15 +429,13 @@ export async function analyzeYouTubeChannel(
           3) **Call-to-Action (CTA)**: 롱폼 본편 시청이나 구독을 유도하는 명확한 액션 플랜
           4) **썸네일 내 CTA 문구 추천 (Thumbnail CTA Text)**: 각 쇼츠 컨셉의 썸네일에 포함할 구체적이고 강력한 Call-to-Action 텍스트 추천.
     
-    [알고리즘 인사이트 JSON — UI 신호등용 · 필수]
-    응답 **맨 마지막**에 단독으로 \`\`\`json 코드블록 1개**만** 추가한다. 블록 안은 **유효한 JSON 객체 한 덩어리**이며 키는 algorithmInsights만 사용한다. 각 항목은 {label, status}, status는 green|yellow|red, label은 한국어 짧은 구만. 채널 분석 시 항목 5개 전후가 적절. 위 설명 문장은 JSON 밖에 쓰지 말 것.
-    형식 예: \`\`\`json\n${ALGORITHM_INSIGHTS_JSON_HINT}\n\`\`\`
+    ${algorithmInsightsJsonInstruction(locale, "channel")}
 
-    ${webToolInstruction}
-    출력은 구조가 분명한 전문 마크다운 형식으로만 작성해 주세요.
+    ${webToolLine}
+    ${outputFormatOnlyCh}
     
-    **중요**: 가독성을 위해 각 문단 사이에는 빈 줄을 한 줄 넣어(문단 구분) 여백을 충분히 확보해 주세요. 소제목과 본문 사이에도 적절한 간격을 두어 읽기 편하게 구성해 주세요.
-    ${buildStructuredReportRules('channel')}
+    ${readabilityImportantCh}
+    ${buildStructuredReportRules("channel", locale)}
   `;
 
   try {

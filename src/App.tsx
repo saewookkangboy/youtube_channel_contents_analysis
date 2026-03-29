@@ -37,7 +37,12 @@ import {
   Activity,
 } from 'lucide-react';
 import { cn } from './lib/cn';
-import { analyzeReportCompleteness, buildReportCompletenessAppendix } from './lib/reportCompleteness';
+import {
+  analyzeReportCompleteness,
+  buildReportCompletenessAppendix,
+  CHECKLIST_GAP_TRANSLATION_KEY,
+} from './lib/reportCompleteness';
+import { useI18n } from './i18n/I18nContext';
 import { wrapReportDocumentHtml } from './lib/wrapReportDocumentHtml';
 import {
   LineChart,
@@ -51,6 +56,7 @@ import {
 } from 'recharts';
 
 export default function App() {
+  const { locale, t, setLocale } = useI18n();
   const [activeTab, setActiveTab] = useState<'channel' | 'video'>('channel');
   
   // Channel State
@@ -89,8 +95,7 @@ export default function App() {
     if (e) e.preventDefault();
 
     if (!isGeminiApiKeyConfigured()) {
-      const msg =
-        'Gemini API 키가 없습니다. 프로젝트 루트에 .env 또는 .env.local을 만들고 GEMINI_API_KEY를 설정한 뒤 개발 서버를 다시 실행해 주세요.';
+      const msg = t('errNoGeminiKey');
       if (activeTab === 'channel') {
         setError(msg);
       } else {
@@ -124,9 +129,10 @@ export default function App() {
         setChannelData(rawData);
         const geminiOpts: GeminiAnalysisOptions = {
           factsOnly: hasYtApiKey && factsOnlyMode,
+          outputLocale: locale,
         };
         const result = await analyzeYouTubeChannel(url, rawData, geminiOpts);
-        setAnalysis(result.text || '분석 결과가 비어 있습니다. 잠시 후 다시 시도해 주세요.');
+        setAnalysis(result.text || t('resultEmpty'));
         setSources(result.sources || []);
         setAlgorithmInsights(result.algorithmInsights || null);
         setChannelApiUsage(result.apiUsage);
@@ -141,7 +147,7 @@ export default function App() {
           }));
         }
       } catch (err) {
-        setError('채널 분석에 실패했습니다. URL을 확인한 뒤 다시 시도해 주세요.');
+        setError(t('errChannelFailed'));
         console.error(err);
       } finally {
         setLoading(false);
@@ -171,9 +177,10 @@ export default function App() {
         setVideoData(rawData);
         const geminiOpts: GeminiAnalysisOptions = {
           factsOnly: hasYtApiKey && factsOnlyMode,
+          outputLocale: locale,
         };
         const result = await analyzeYouTubeVideo(videoUrl, rawData, geminiOpts);
-        setVideoAnalysis(result.text || '분석 결과가 비어 있습니다. 잠시 후 다시 시도해 주세요.');
+        setVideoAnalysis(result.text || t('resultEmpty'));
         setVideoSources(result.sources || []);
         setVideoAlgorithmInsights(result.algorithmInsights || null);
         setVideoApiUsage(result.apiUsage);
@@ -188,7 +195,7 @@ export default function App() {
           }));
         }
       } catch (err) {
-        setVideoError('영상 분석에 실패했습니다. URL을 확인한 뒤 다시 시도해 주세요.');
+        setVideoError(t('errVideoFailed'));
         console.error(err);
       } finally {
         setVideoLoading(false);
@@ -199,17 +206,21 @@ export default function App() {
   const handleDownloadMarkdown = () => {
     const currentAnalysis = activeTab === 'channel' ? analysis : videoAnalysis;
     if (!currentAnalysis) return;
-    const completeness = analyzeReportCompleteness(activeTab, currentAnalysis);
-    const appendix = buildReportCompletenessAppendix(completeness.missingLabels, {
-      algorithmSeoTableMissing: completeness.algorithmSeoTableMissing,
-      algorithmSeoChecklistColumnsIncomplete: completeness.algorithmSeoChecklistColumnsIncomplete,
-      algorithmSeoChecklistColumnGaps: completeness.algorithmSeoChecklistColumnGaps,
-    });
+    const completeness = analyzeReportCompleteness(activeTab, currentAnalysis, locale);
+    const appendix = buildReportCompletenessAppendix(
+      completeness.missingLabels,
+      {
+        algorithmSeoTableMissing: completeness.algorithmSeoTableMissing,
+        algorithmSeoChecklistColumnsIncomplete: completeness.algorithmSeoChecklistColumnsIncomplete,
+        algorithmSeoChecklistColumnGaps: completeness.algorithmSeoChecklistColumnGaps,
+      },
+      locale,
+    );
     const blob = new Blob([currentAnalysis + appendix], { type: 'text/markdown;charset=utf-8' });
     const urlObj = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = urlObj;
-    a.download = activeTab === 'channel' ? '유튜브_채널_분석.md' : '유튜브_영상_분석.md';
+    a.download = activeTab === 'channel' ? t('downloadFilenameChannel') : t('downloadFilenameVideo');
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -222,7 +233,10 @@ export default function App() {
     const reportElement = document.getElementById('report-content');
     if (!reportElement) return;
     
-    const htmlContent = wrapReportDocumentHtml(reportElement.innerHTML);
+    const htmlContent = wrapReportDocumentHtml(reportElement.innerHTML, {
+      lang: locale === 'en' ? 'en' : 'ko',
+      title: t('reportViewerTitle'),
+    });
     
     const newWindow = window.open('', '_blank');
     if (newWindow) {
@@ -243,8 +257,8 @@ export default function App() {
     if (!currentAnalysis) {
       return null;
     }
-    return analyzeReportCompleteness(activeTab, currentAnalysis);
-  }, [activeTab, currentAnalysis]);
+    return analyzeReportCompleteness(activeTab, currentAnalysis, locale);
+  }, [activeTab, currentAnalysis, locale]);
 
   /** 조회 대비 참여·반응 비율 및 채널 맥락 지표 (API 데이터가 있을 때만 수치 표시) */
   const operationalKpi = useMemo(() => {
@@ -266,16 +280,16 @@ export default function App() {
       const likeRatePct = views > 0 ? (likes / views) * 100 : null;
       const commentRatePct = views > 0 ? (comments / views) * 100 : null;
       return {
-        scopeLabel: '선택한 영상 1건',
+        scopeLabel: t('kpiScopeVideo'),
         rows: [
-          { key: 'engagement', label: '참여율', hint: '(좋아요+댓글)÷조회', value: fmtPct(engagementPct), barFill: rateBar(engagementPct) },
-          { key: 'like', label: '좋아요율', hint: '좋아요÷조회', value: fmtPct(likeRatePct), barFill: rateBar(likeRatePct) },
-          { key: 'comment', label: '댓글율', hint: '댓글÷조회', value: fmtPct(commentRatePct), barFill: rateBar(commentRatePct) },
+          { key: 'engagement', label: t('kpiEngagement'), hint: t('kpiHintEngagement'), value: fmtPct(engagementPct), barFill: rateBar(engagementPct) },
+          { key: 'like', label: t('kpiLikeRate'), hint: t('kpiHintLike'), value: fmtPct(likeRatePct), barFill: rateBar(likeRatePct) },
+          { key: 'comment', label: t('kpiCommentRate'), hint: t('kpiHintComment'), value: fmtPct(commentRatePct), barFill: rateBar(commentRatePct) },
         ],
         footnote:
           views === 0
-            ? '조회수가 없어 비율을 계산할 수 없습니다.'
-            : '비율이 낮으면 썸네일·첫 30초·CTA(좋아요·댓글 유도)를 점검해 보세요.',
+            ? t('kpiFootnoteNoViewsVideo')
+            : t('kpiFootnoteLowVideo'),
       };
     }
 
@@ -306,9 +320,9 @@ export default function App() {
       }
 
       const baseRows = [
-        { key: 'engagement', label: '참여율', hint: '(좋아요+댓글)÷조회', value: fmtPct(engagementPct), barFill: rateBar(engagementPct) },
-        { key: 'like', label: '좋아요율', hint: '좋아요÷조회', value: fmtPct(likeRatePct), barFill: rateBar(likeRatePct) },
-        { key: 'comment', label: '댓글율', hint: '댓글÷조회', value: fmtPct(commentRatePct), barFill: rateBar(commentRatePct) },
+        { key: 'engagement', label: t('kpiEngagement'), hint: t('kpiHintEngagement'), value: fmtPct(engagementPct), barFill: rateBar(engagementPct) },
+        { key: 'like', label: t('kpiLikeRate'), hint: t('kpiHintLike'), value: fmtPct(likeRatePct), barFill: rateBar(likeRatePct) },
+        { key: 'comment', label: t('kpiCommentRate'), hint: t('kpiHintComment'), value: fmtPct(commentRatePct), barFill: rateBar(commentRatePct) },
       ];
       const rows =
         recentVsChannel !== null
@@ -316,8 +330,8 @@ export default function App() {
               ...baseRows,
               {
                 key: 'recentVsAvg',
-                label: '최근 vs 채널 평균 조회',
-                hint: '최근 평균 조회 ÷ 채널 전체 평균',
+                label: t('kpiRecentVsAvg'),
+                hint: t('kpiHintRecentVs'),
                 value: recentVsChannel,
                 barFill: recentVsBarFill,
               },
@@ -325,22 +339,21 @@ export default function App() {
           : baseRows;
 
       return {
-        scopeLabel: `최근 업로드 ${recentVideos.length}개 합산`,
+        scopeLabel: t('kpiScopeChannel', recentVideos.length),
         rows,
         footnote:
           views === 0
-            ? '최근 영상에 조회 데이터가 없어 비율을 계산할 수 없습니다.'
-            : '최근 평균 조회가 채널 평균보다 낮으면 제목·썸네일·업로드 주기를 우선 점검하는 편이 좋습니다.',
+            ? t('kpiFootnoteNoViewsChannel')
+            : t('kpiFootnoteLowChannel'),
       };
     }
 
     return {
       scopeLabel: null as string | null,
       rows: [] as { key: string; label: string; hint: string; value: string; barFill: number }[],
-      footnote:
-        'VITE_YOUTUBE_API_KEY로 분석을 실행하면 조회·좋아요·댓글 기준으로 위 지표가 채워집니다.',
+      footnote: t('kpiFootnoteNeedApi'),
     };
-  }, [activeTab, videoData, channelData]);
+  }, [activeTab, videoData, channelData, locale, t]);
 
   const [compactChart, setCompactChart] = useState(false);
   useEffect(() => {
@@ -356,11 +369,39 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-md sm:px-6 sm:py-4">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-4">
-          <div className="flex min-w-0 items-center gap-2 md:shrink-0">
-            <div className="shrink-0 rounded-lg bg-red-600 p-2">
-              <Youtube className="h-6 w-6 text-white" />
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 md:shrink-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="shrink-0 rounded-lg bg-red-600 p-2">
+                <Youtube className="h-6 w-6 text-white" />
+              </div>
+              <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-xl">{t('brandTitle')}</h1>
             </div>
-            <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-xl">채널인사이트</h1>
+            <div
+              className="flex shrink-0 items-center gap-0.5 rounded-full border border-gray-200 bg-white p-0.5 shadow-sm"
+              role="group"
+              aria-label={t('langToggleAria')}
+            >
+              <button
+                type="button"
+                onClick={() => setLocale('ko')}
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-xs font-semibold transition-colors',
+                  locale === 'ko' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-800',
+                )}
+              >
+                {t('langKo')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocale('en')}
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-xs font-semibold transition-colors',
+                  locale === 'en' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-800',
+                )}
+              >
+                {t('langEn')}
+              </button>
+            </div>
           </div>
 
           <div className="flex justify-center md:justify-start">
@@ -376,7 +417,7 @@ export default function App() {
                 )}
               >
                 <LayoutDashboard className="h-4 w-4 shrink-0" />
-                <span>채널</span>
+                <span>{t('tabChannel')}</span>
               </button>
               <button
                 type="button"
@@ -389,7 +430,7 @@ export default function App() {
                 )}
               >
                 <Video className="h-4 w-4 shrink-0" />
-                <span>영상</span>
+                <span>{t('tabVideo')}</span>
               </button>
             </div>
           </div>
@@ -411,9 +452,7 @@ export default function App() {
                     activeTab === 'channel' ? setUrl(e.target.value) : setVideoUrl(e.target.value)
                   }
                   placeholder={
-                    activeTab === 'channel'
-                      ? '채널 URL (@핸들 또는 /channel/UC…)'
-                      : '영상 URL (watch?v=…)'
+                    activeTab === 'channel' ? t('placeholderChannel') : t('placeholderVideo')
                   }
                   className="min-h-11 w-full rounded-full border-none bg-gray-100 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-red-500"
                 />
@@ -423,13 +462,13 @@ export default function App() {
                 disabled={currentLoading}
                 className="flex min-h-11 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full bg-black px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
               >
-                {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '분석'}
+                {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('analyze')}
               </button>
             </div>
             {hasYtApiKey && (
               <label
                 className="flex cursor-pointer items-start gap-2.5 px-1 text-left text-xs leading-snug text-gray-600 md:items-center"
-                title="YouTube Data API로 메타데이터를 가져온 경우에만 웹 도구를 끕니다. API 호출이 실패하면 자동으로 검색·URL 컨텍스트로 보완합니다."
+                title={t('factsOnlyTooltip')}
               >
                 <input
                   type="checkbox"
@@ -438,11 +477,8 @@ export default function App() {
                   onChange={(e) => setFactsOnlyMode(e.target.checked)}
                 />
                 <span>
-                  <span className="font-medium text-gray-700">팩트 우선</span>
-                  <span className="text-gray-500">
-                    {' '}
-                    (API로 가져온 수치가 있을 때만 웹 검색·URL 도구 끄기 — 토큰·비용 절감)
-                  </span>
+                  <span className="font-medium text-gray-700">{t('factsOnlyTitle')}</span>
+                  <span className="text-gray-500"> {t('factsOnlyHint')}</span>
                 </span>
               </label>
             )}
@@ -461,17 +497,13 @@ export default function App() {
             >
               <div className="w-full max-w-md rounded-3xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8">
                 <Sparkles className="w-12 h-12 text-orange-500 mx-auto mb-4" />
-                <h2 className="mb-2 text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">분석을 시작하세요</h2>
+                <h2 className="mb-2 text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">{t('emptyStateTitle')}</h2>
                 <p className="text-gray-600 mb-3 text-[15px] leading-relaxed">
-                  {activeTab === 'channel'
-                    ? '상단에 YouTube 채널 URL을 입력하고 분석을 실행하면, 채널 성장과 시청 만족도를 함께 보는 한국어 전략 리포트가 생성됩니다.'
-                    : '상단에 YouTube 영상 URL을 입력하고 분석을 실행하면, 해당 영상의 성과 해석과 패키징·알고리즘 관점의 실행 과제가 한국어 리포트로 정리됩니다.'}
+                  {activeTab === 'channel' ? t('emptyStateChannel') : t('emptyStateVideo')}
                 </p>
                 <p className="text-left text-xs text-gray-500 leading-relaxed border-t border-gray-100 pt-4">
-                  <span className="font-semibold text-gray-600">포함 범위(Agent.md 기준): </span>
-                  초기 24시간 성과 진단, 제목·썸네일·오프닝 정합성, 알고리즘·SEO(표 형식), 우선 실행{' '}
-                  <strong className="text-gray-700">7일 액션 플랜</strong> 등 고정 섹션을 유지합니다. API 키가
-                  있으면 YouTube 메타데이터를, 없으면 검색·근거 링크로 보완합니다.
+                  <span className="font-semibold text-gray-600">{t('emptyStateScopeLead')}</span>
+                  {t('emptyStateScopeBody')}
                 </p>
               </div>
             </motion.div>
@@ -491,9 +523,7 @@ export default function App() {
                 </div>
               </div>
               <p className="mt-4 text-gray-500 font-medium animate-pulse">
-                {hasYtApiKey && factsOnlyMode
-                  ? 'YouTube 팩트와 모델로 리포트를 작성하는 중입니다…'
-                  : '웹 검색과 모델 추론으로 인사이트를 모으는 중입니다…'}
+                {hasYtApiKey && factsOnlyMode ? t('loadingFacts') : t('loadingWeb')}
               </p>
             </motion.div>
           )}
@@ -510,7 +540,7 @@ export default function App() {
                 onClick={() => handleAnalyze()}
                 className="mt-4 text-sm underline font-bold"
               >
-                다시 시도
+                {t('retry')}
               </button>
             </motion.div>
           )}
@@ -526,60 +556,60 @@ export default function App() {
                 {activeTab === 'channel' ? (
                   <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
                     <h3 className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400">
-                      <BarChart3 className="h-4 w-4 shrink-0" /> 분석 핵심 지표
+                      <BarChart3 className="h-4 w-4 shrink-0" /> {t('sidebarChannelMetrics')}
                     </h3>
                     <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                      성장 진단 (P0)
+                      {t('growthDiagP0')}
                     </p>
                     <div className="space-y-4">
                       <div className="flex items-center justify-between gap-2 rounded-2xl border border-amber-200/80 bg-amber-50/60 p-3">
-                        <span className="min-w-0 text-sm font-medium text-gray-800">초기 24시간 성과 진단</span>
-                        <span className="shrink-0 text-xs font-bold text-amber-800">CTR · 30초 훅</span>
+                        <span className="min-w-0 text-sm font-medium text-gray-800">{t('metric24h')}</span>
+                        <span className="shrink-0 text-xs font-bold text-amber-800">{t('metric24hBadge')}</span>
                       </div>
                       <div className="flex items-center justify-between gap-2 rounded-2xl border border-amber-200/80 bg-amber-50/60 p-3">
-                        <span className="min-w-0 text-sm font-medium text-gray-800">만족도 중심 진단 카드</span>
-                        <span className="shrink-0 text-xs font-bold text-amber-800">패키징 정합성</span>
+                        <span className="min-w-0 text-sm font-medium text-gray-800">{t('metricSatisfaction')}</span>
+                        <span className="shrink-0 text-xs font-bold text-amber-800">{t('metricSatisfactionBadge')}</span>
                       </div>
                       <div className="flex items-center justify-between gap-2 rounded-2xl border border-amber-200/80 bg-amber-50/60 p-3">
-                        <span className="min-w-0 text-sm font-medium text-gray-800">실험형 7일 액션</span>
-                        <span className="shrink-0 text-xs font-bold text-amber-800">가설 · 지표</span>
+                        <span className="min-w-0 text-sm font-medium text-gray-800">{t('metric7d')}</span>
+                        <span className="shrink-0 text-xs font-bold text-amber-800">{t('metric7dBadge')}</span>
                       </div>
                     </div>
                     <p className="mb-3 mt-6 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                      포함 리포트 섹션
+                      {t('reportSections')}
                     </p>
                     <div className="space-y-4">
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                        <span className="text-sm text-gray-500">성과 및 지표 분석</span>
-                        <span className="text-sm font-bold text-red-600">강화됨</span>
+                        <span className="text-sm text-gray-500">{t('secPerformance')}</span>
+                        <span className="text-sm font-bold text-red-600">{t('badgeEnhanced')}</span>
                       </div>
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                        <span className="text-sm text-gray-500">수익화 전략</span>
-                        <span className="text-sm font-bold text-blue-600">포함됨</span>
+                        <span className="text-sm text-gray-500">{t('secMonetization')}</span>
+                        <span className="text-sm font-bold text-blue-600">{t('badgeIncluded')}</span>
                       </div>
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                        <span className="text-sm text-gray-500">알고리즘, 태그 & 썸네일</span>
-                        <span className="text-sm font-bold text-orange-600">강화됨</span>
+                        <span className="text-sm text-gray-500">{t('secAlgoThumb')}</span>
+                        <span className="text-sm font-bold text-orange-600">{t('badgeEnhanced')}</span>
                       </div>
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                        <span className="text-sm text-gray-500">제목 전략 제안</span>
-                        <span className="text-sm font-bold text-purple-600">포함됨</span>
+                        <span className="text-sm text-gray-500">{t('secTitles')}</span>
+                        <span className="text-sm font-bold text-purple-600">{t('badgeIncluded')}</span>
                       </div>
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                        <span className="text-sm text-gray-500">시청자 참여 전략</span>
-                        <span className="text-sm font-bold text-green-600">포함됨</span>
+                        <span className="text-sm text-gray-500">{t('secEngagement')}</span>
+                        <span className="text-sm font-bold text-green-600">{t('badgeIncluded')}</span>
                       </div>
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                        <span className="text-sm text-gray-500">최적 업로드 스케줄</span>
-                        <span className="text-sm font-bold text-indigo-600">포함됨</span>
+                        <span className="text-sm text-gray-500">{t('secSchedule')}</span>
+                        <span className="text-sm font-bold text-indigo-600">{t('badgeIncluded')}</span>
                       </div>
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                        <span className="text-sm text-gray-500">신규 시리즈 기획</span>
-                        <span className="text-sm font-bold text-pink-600">포함됨</span>
+                        <span className="text-sm text-gray-500">{t('secSeries')}</span>
+                        <span className="text-sm font-bold text-pink-600">{t('badgeIncluded')}</span>
                       </div>
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                        <span className="text-sm text-gray-500">영상/오디오 품질 개선</span>
-                        <span className="text-sm font-bold text-teal-600">포함됨</span>
+                        <span className="text-sm text-gray-500">{t('secQuality')}</span>
+                        <span className="text-sm font-bold text-teal-600">{t('badgeIncluded')}</span>
                       </div>
                     </div>
                   </div>
@@ -587,42 +617,42 @@ export default function App() {
                   <div className="space-y-6">
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
-                        <BarChart3 className="w-4 h-4" /> 영상 API 지표
+                        <BarChart3 className="w-4 h-4" /> {t('videoApiMetrics')}
                       </h3>
                       <div className="space-y-4">
                         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                          <span className="text-sm text-gray-500">조회수</span>
+                          <span className="text-sm text-gray-500">{t('views')}</span>
                           <span className="text-sm font-bold text-red-600">{videoData?.views ? parseInt(videoData.views).toLocaleString() : '-'}</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                          <span className="text-sm text-gray-500">좋아요</span>
+                          <span className="text-sm text-gray-500">{t('likes')}</span>
                           <span className="text-sm font-bold text-blue-600">{videoData?.likes ? parseInt(videoData.likes).toLocaleString() : '-'}</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                          <span className="text-sm text-gray-500">댓글 수</span>
+                          <span className="text-sm text-gray-500">{t('comments')}</span>
                           <span className="text-sm font-bold text-orange-600">{videoData?.comments ? parseInt(videoData.comments).toLocaleString() : '-'}</span>
                         </div>
                       </div>
                     </div>
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
-                        <ListChecks className="w-4 h-4" /> 리포트 모듈 (P0)
+                        <ListChecks className="w-4 h-4" /> {t('reportModulesP0')}
                       </h3>
                       <p className="mb-3 text-xs leading-relaxed text-gray-500">
-                        본문에 동일한 헤딩으로 포함됩니다. 누락 시 상단 경고 배너를 확인하세요.
+                        {t('reportModulesHint')}
                       </p>
                       <div className="space-y-3">
                         <div className="flex items-center justify-between p-3 rounded-2xl border border-amber-200/80 bg-amber-50/60">
-                          <span className="text-sm font-medium text-gray-800">초기 24시간 성과 진단</span>
-                          <span className="text-xs font-bold text-amber-800">표준</span>
+                          <span className="text-sm font-medium text-gray-800">{t('metric24h')}</span>
+                          <span className="text-xs font-bold text-amber-800">{t('standard')}</span>
                         </div>
                         <div className="flex items-center justify-between p-3 rounded-2xl border border-amber-200/80 bg-amber-50/60">
-                          <span className="text-sm font-medium text-gray-800">만족도 중심 진단 카드</span>
-                          <span className="text-xs font-bold text-amber-800">표준</span>
+                          <span className="text-sm font-medium text-gray-800">{t('metricSatisfaction')}</span>
+                          <span className="text-xs font-bold text-amber-800">{t('standard')}</span>
                         </div>
                         <div className="flex items-center justify-between p-3 rounded-2xl border border-amber-200/80 bg-amber-50/60">
-                          <span className="text-sm font-medium text-gray-800">실험형 7일 액션 플랜</span>
-                          <span className="text-xs font-bold text-amber-800">표준</span>
+                          <span className="text-sm font-medium text-gray-800">{t('metric7dPlan')}</span>
+                          <span className="text-xs font-bold text-amber-800">{t('standard')}</span>
                         </div>
                       </div>
                     </div>
@@ -633,7 +663,7 @@ export default function App() {
 
                 <div className="rounded-3xl bg-black p-5 text-white shadow-xl sm:p-6">
                   <h3 className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest opacity-50">
-                    <TrendingUp className="h-4 w-4 shrink-0" /> 알고리즘 인사이트 요약
+                    <TrendingUp className="h-4 w-4 shrink-0" /> {t('algoInsightsTitle')}
                   </h3>
                   {currentAlgorithmInsights ? (
                     <div className="space-y-4">
@@ -650,22 +680,21 @@ export default function App() {
                     </div>
                   ) : (
                     <p className="text-sm leading-relaxed opacity-90">
-                      추천은 클릭 이후 시청 경험과 장기 만족도까지 함께 반영됩니다. CTR만이 아니라 유지·재방문·정합성을
-                      함께 보완하는 것이 성장에 유리합니다.
+                      {t('algoInsightsFallback')}
                     </p>
                   )}
                 </div>
 
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1 flex items-center gap-2">
-                    <Activity className="h-4 w-4 shrink-0" /> 운영 개선 KPI
+                    <Activity className="h-4 w-4 shrink-0" /> {t('kpiTitle')}
                   </h3>
                   <p className="mb-4 text-[11px] leading-snug text-gray-500">
-                    조회 대비 참여·반응 비율과 채널 맥락(최근 vs 평균)을 함께 봅니다.
+                    {t('kpiSubtitle')}
                   </p>
                   {operationalKpi.scopeLabel && (
                     <p className="mb-3 rounded-xl bg-gray-50 px-3 py-2 text-[11px] font-medium text-gray-600">
-                      기준: {operationalKpi.scopeLabel}
+                      {t('kpiBasis')} {operationalKpi.scopeLabel}
                     </p>
                   )}
                   {operationalKpi.rows.length > 0 ? (
@@ -693,7 +722,7 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {(['참여율', '좋아요율', '댓글율'] as const).map((label) => (
+                      {[t('kpiEngagement'), t('kpiLikeRate'), t('kpiCommentRate')].map((label) => (
                         <div key={label} className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-3">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-gray-400">{label}</span>
@@ -716,13 +745,13 @@ export default function App() {
                       <div className="rounded-2xl bg-red-100 p-3">
                         <BarChart3 className="h-6 w-6 text-red-600" />
                       </div>
-                      <h2 className="min-w-0 text-lg font-bold text-gray-900 sm:text-2xl">최근 영상 성과 트렌드</h2>
+                      <h2 className="min-w-0 text-lg font-bold text-gray-900 sm:text-2xl">{t('chartTitle')}</h2>
                     </div>
                     <div className="h-[220px] w-full sm:h-[280px] md:h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart
                           data={[...channelData.recentVideos].reverse().map(v => ({
-                            name: new Date(v.publishedAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }),
+                            name: new Date(v.publishedAt).toLocaleDateString(locale === 'en' ? 'en-US' : 'ko-KR', { month: 'short', day: 'numeric' }),
                             views: parseInt(v.views, 10) || 0,
                             likes: parseInt(v.likes, 10) || 0,
                             title: v.title
@@ -735,8 +764,8 @@ export default function App() {
                         >
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: compactChart ? 10 : 12 }} dy={10} />
-                          <YAxis yAxisId="left" width={compactChart ? 28 : 36} axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: compactChart ? 10 : 12 }} tickFormatter={(value) => value >= 10000 ? `${(value / 10000).toFixed(0)}만` : value} />
-                          <YAxis yAxisId="right" orientation="right" width={compactChart ? 28 : 36} axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: compactChart ? 10 : 12 }} tickFormatter={(value) => value >= 10000 ? `${(value / 10000).toFixed(0)}만` : value} />
+                          <YAxis yAxisId="left" width={compactChart ? 28 : 36} axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: compactChart ? 10 : 12 }} tickFormatter={(value) => (value >= 10000 ? (locale === 'ko' ? `${(value / 10000).toFixed(0)}만` : `${Math.round(value / 1000)}k`) : String(value))} />
+                          <YAxis yAxisId="right" orientation="right" width={compactChart ? 28 : 36} axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: compactChart ? 10 : 12 }} tickFormatter={(value) => (value >= 10000 ? (locale === 'ko' ? `${(value / 10000).toFixed(0)}만` : `${Math.round(value / 1000)}k`) : String(value))} />
                           <Tooltip 
                             contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }}
                             labelStyle={{ fontWeight: 'bold', color: '#111827', marginBottom: '4px' }}
@@ -747,7 +776,7 @@ export default function App() {
                             yAxisId="left"
                             type="monotone"
                             dataKey="views"
-                            name="조회수"
+                            name={t('chartLineViews')}
                             stroke="#EF4444"
                             strokeWidth={3}
                             dot={{ r: 4, strokeWidth: 2 }}
@@ -757,7 +786,7 @@ export default function App() {
                             yAxisId="right"
                             type="monotone"
                             dataKey="likes"
-                            name="좋아요"
+                            name={t('chartLineLikes')}
                             stroke="#3B82F6"
                             strokeWidth={3}
                             dot={{ r: 4, strokeWidth: 2 }}
@@ -767,20 +796,20 @@ export default function App() {
                       </ResponsiveContainer>
                     </div>
                     <p className="text-sm text-gray-500 mt-4 text-center">
-                      * YouTube API를 통해 수집된 가장 최근 업로드 영상 5개의 조회수 및 좋아요 추이입니다.
+                      {t('chartFootnote')}
                     </p>
                   </div>
                 )}
 
                 <div className="rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm sm:p-8 md:p-12">
                   <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
-                    <h2 className="text-2xl font-black tracking-tighter sm:text-3xl">심층 분석</h2>
+                    <h2 className="text-2xl font-black tracking-tighter sm:text-3xl">{t('deepAnalysis')}</h2>
                     <a
                       href={currentUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex min-h-11 min-w-11 touch-manipulation items-center justify-center self-start text-gray-400 transition-colors hover:text-red-600 sm:self-auto"
-                      aria-label="원본 링크 열기"
+                      aria-label={t('openOriginalAria')}
                     >
                       <ExternalLink className="h-5 w-5" />
                     </a>
@@ -798,15 +827,15 @@ export default function App() {
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-bold tracking-tight">
-                              보고서 필수 섹션 일부가 누락된 것으로 감지되었습니다
+                              {t('completenessTitle')}
                             </p>
                             <p className="mt-1 text-sm leading-relaxed text-amber-900/90">
                               <code className="rounded bg-amber-100/80 px-1 py-0.5 text-xs font-semibold text-amber-900">
-                                Agent.md
+                                {t('completenessAgentMd')}
                               </code>
-                              의 고정 템플릿 기준 {reportCompleteness.missingLabels.length}개 항목이 헤딩에서 찾아지지
-                              않았습니다. 모델 출력이 잘렸거나 제목 표기가 달라졌을 수 있습니다. 아래를 보완하거나 다시
-                              분석해 주세요.
+                              {t('completenessAfterAgent', {
+                                count: reportCompleteness.missingLabels.length,
+                              })}
                             </p>
                             <ul className="mt-3 max-h-40 list-disc space-y-1 overflow-y-auto pl-5 text-sm text-amber-900/85">
                               {reportCompleteness.missingLabels.map((label) => (
@@ -825,7 +854,7 @@ export default function App() {
                           )}
                         >
                           <RefreshCw className={cn('h-4 w-4', currentLoading && 'animate-spin')} />
-                          다시 분석
+                          {t('reanalyze')}
                         </button>
                       </div>
                     </div>
@@ -843,15 +872,10 @@ export default function App() {
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-bold tracking-tight">
-                              알고리즘/SEO 섹션에 Markdown 표가 없습니다
+                              {t('algoTableMissingTitle')}
                             </p>
                             <p className="mt-1 text-sm leading-relaxed text-sky-900/90">
-                              헤딩은 감지되었지만, Markdown 표(헤더 행 +{' '}
-                              <code className="rounded bg-sky-100/80 px-1 py-0.5 text-xs font-mono text-sky-900">
-                                |---|---|
-                              </code>{' '}
-                              구분 행)이 본문에서 찾아지지 않았습니다. 체크리스트 표를 포함하도록 다시 분석하거나 직접
-                              추가해 주세요.
+                              {t('algoTableMissingBody')}
                             </p>
                           </div>
                         </div>
@@ -865,7 +889,7 @@ export default function App() {
                           )}
                         >
                           <RefreshCw className={cn('h-4 w-4', currentLoading && 'animate-spin')} />
-                          다시 분석
+                          {t('reanalyze')}
                         </button>
                       </div>
                     </div>
@@ -885,16 +909,15 @@ export default function App() {
                             </div>
                             <div className="min-w-0">
                               <p className="text-sm font-bold tracking-tight">
-                                알고리즘/SEO 체크리스트 표 헤더가 템플릿과 맞지 않습니다
+                                {t('checklistHeaderTitle')}
                               </p>
                               <p className="mt-1 text-sm leading-relaxed text-violet-900/90">
-                                표는 있으나 첫 번째 표 헤더에 다음 열 키워드가 빠졌거나 표기가 다릅니다. 프롬프트의 3열
-                                구조(최적화 항목 · 현재 상태 진단 · 구체적인 개선 방안)에 맞추거나 다시 분석해 주세요.
+                                {t('checklistHeaderBody')}
                               </p>
                               {reportCompleteness.algorithmSeoChecklistColumnGaps.length > 0 && (
                                 <ul className="mt-3 max-h-40 list-disc space-y-1 overflow-y-auto pl-5 text-sm text-violet-900/85">
                                   {reportCompleteness.algorithmSeoChecklistColumnGaps.map((g) => (
-                                    <li key={g}>{g}</li>
+                                    <li key={g}>{t(CHECKLIST_GAP_TRANSLATION_KEY[g])}</li>
                                   ))}
                                 </ul>
                               )}
@@ -910,7 +933,7 @@ export default function App() {
                             )}
                           >
                             <RefreshCw className={cn('h-4 w-4', currentLoading && 'animate-spin')} />
-                            다시 분석
+                            {t('reanalyze')}
                           </button>
                         </div>
                       </div>
@@ -934,10 +957,10 @@ export default function App() {
                       <div className="rounded-2xl bg-blue-100 p-3">
                         <Search className="h-6 w-6 text-blue-600" />
                       </div>
-                      <h2 className="min-w-0 text-lg font-bold text-gray-900 sm:text-2xl">참고 출처 · 팩트 체크</h2>
+                      <h2 className="min-w-0 text-lg font-bold text-gray-900 sm:text-2xl">{t('sourcesTitle')}</h2>
                     </div>
                     <p className="text-gray-600 mb-6 leading-relaxed">
-                      AI가 분석을 위해 실제로 참고한 웹 문서 및 데이터 출처입니다. 할루시네이션 검증을 위해 직접 확인할 수 있습니다.
+                      {t('sourcesBody')}
                     </p>
                     <ul className="space-y-4">
                       {currentSources.map((source, idx) => (
@@ -963,20 +986,20 @@ export default function App() {
                     className="flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-gray-800 transition-colors shadow-lg shadow-gray-200"
                   >
                     <Download className="w-5 h-5" />
-                    마크다운(MD) 다운로드
+                    {t('downloadMd')}
                   </button>
                   <button
                     onClick={handleViewAsWebPage}
                     className="flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-4 bg-white text-gray-900 border-2 border-gray-200 font-bold rounded-2xl hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm"
                   >
                     <Globe className="w-5 h-5" />
-                    웹 페이지로 보기
+                    {t('viewWeb')}
                   </button>
                 </div>
 
                 <div className="flex items-center justify-center gap-4 py-4">
                   <div className="h-px bg-gray-200 flex-1" />
-                  <span className="text-[10px] font-bold text-gray-400 tracking-[0.15em]">분석 리포트 끝</span>
+                  <span className="text-[10px] font-bold text-gray-400 tracking-[0.15em]">{t('reportEnd')}</span>
                   <div className="h-px bg-gray-200 flex-1" />
                 </div>
               </div>
@@ -987,9 +1010,9 @@ export default function App() {
 
       <footer className="mt-8 border-t border-gray-100 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-7xl space-y-1 px-4 py-4 text-center text-xs text-gray-400 sm:px-6">
-          <p>© 2026 채널인사이트</p>
+          <p>{t('footerCopy')}</p>
           <p>
-            made with{' '}
+            {t('footerMade')}{' '}
             <a
               href="mailto:chunghyo@troe.kr"
               className="text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline"
