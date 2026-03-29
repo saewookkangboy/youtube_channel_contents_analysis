@@ -6,11 +6,17 @@ export const CHANNEL_REPORT_PREVIEW_MARKDOWN = `# 채널 심층 분석 (미리�
 
 ## 0. 🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)
 
-FACT_PACKET 요약: 구독자·조회수 등은 **데모용**입니다.
+FACT_PACKET 요약(데모·E2E 고정값): 아래 표 수치는 **미리보기 전용**이며 Playwright가 팩트 섹션 렌더를 검증하는 데 사용합니다.
+
+| 팩트 키 | 값(데모) |
+| --- | --- |
+| sc (구독자) | 12500 |
+| tv (총조회) | 340000 |
+| ANALYTICS rvr | 1.25 |
 
 ## 1. 📊 채널 데이터 및 현황 분석 (Channel Data Analysis)
 
-현재 규모와 성장 추세를 한 단락으로 요약합니다.
+섹션 0과 동일 출처: 구독자 **12500**, 총조회 **340000**. ANALYTICS 파생 **rvr=1.25**를 언급합니다.
 
 ## 2. 🚀 콘텐츠 성과 분석 (Content Performance Analysis)
 
@@ -102,11 +108,16 @@ export const VIDEO_REPORT_PREVIEW_MARKDOWN = `# 영상 심층 분석 (미리보�
 
 ## 0. 🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)
 
-FACT_PACKET 기반 수치 인용(데모).
+FACT_PACKET 기반 수치 인용(데모): 조회 **88200**, 좋아요 **4200**.
+
+| 팩트 | 값(데모) |
+| --- | --- |
+| v (조회) | 88200 |
+| er (참여율 %) | 5.2 |
 
 ## 1. 📊 영상 상세 분석 (Detailed Video Analysis)
 
-훅·편집·스토리텔링 관점 요약.
+0번과 동일: 조회 **88200**, ANALYTICS **er=5.2%** 인용.
 
 ## 2. 📝 제목 및 설명란 추천 (Title & Description Recommendations)
 

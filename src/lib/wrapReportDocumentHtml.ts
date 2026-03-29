@@ -37,6 +37,16 @@ export function wrapReportDocumentHtml(
       margin-right: auto;
       font-feature-settings: "kern" 1, "liga" 1;
     }
+    .report-document--surface {
+      border-radius: 1rem;
+      border: 1px solid #e8ecf1;
+      background: linear-gradient(165deg, #ffffff 0%, #f9fafb 55%, #f4f5f7 100%);
+      padding: 1.25rem 1.25rem 1.65rem;
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.85);
+    }
+    @media (min-width: 640px) {
+      .report-document--surface { padding: 1.5rem 1.75rem 2rem; }
+    }
     .report-document :where(h1) {
       margin-top: 0;
       margin-bottom: 1rem;
@@ -49,6 +59,7 @@ export function wrapReportDocumentHtml(
       color: #0f172a;
     }
     .report-document :where(h2) {
+      scroll-margin-top: 4.5rem;
       margin-top: 2.25rem;
       margin-bottom: 0.85rem;
       padding: 0.45rem 0 0.45rem 1rem;
@@ -78,11 +89,17 @@ export function wrapReportDocumentHtml(
       color: #334155;
     }
     .report-document :where(p) {
-      margin-top: 0.65em;
-      margin-bottom: 0.65em;
-      line-height: 1.82;
+      margin: 0 0 1rem;
+      line-height: 1.78;
       color: #334155;
     }
+    .report-document :where(li p), .report-document :where(td p), .report-document :where(th p) {
+      margin: 0 0 0.5rem;
+    }
+    .report-document :where(li p:last-child), .report-document :where(td p:last-child), .report-document :where(th p:last-child) {
+      margin-bottom: 0;
+    }
+    .report-document :where(h2 + p, h3 + p, h4 + p) { margin-top: 0; }
     .report-document :where(strong) {
       font-weight: 700;
       color: #0f172a;
@@ -112,14 +129,53 @@ export function wrapReportDocumentHtml(
       font-size: 0.96em;
       line-height: 1.75;
     }
-    .report-document :where(blockquote p) { margin: 0.35em 0; }
-    .report-document :where(ul) { list-style: none; padding-left: 0; }
-    .report-document :where(ul > li) {
+    .report-document :where(blockquote p) { margin: 0.35rem 0; }
+    .report-document :where(.report-md-list) { margin: 0.65rem 0 1rem; }
+    .report-document :where(.report-md-list--ul) { list-style: none; padding-left: 0; }
+    .report-document :where(.report-md-list--ul > li) {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+      list-style: none;
+      padding-left: 0;
+      margin: 0.45rem 0;
+      min-height: 0;
+    }
+    .report-document :where(.report-md-list--ul > li)::before {
+      content: "";
+      flex: 0 0 auto;
+      width: 0.42rem;
+      height: 0.42rem;
+      margin-top: 0.52rem;
+      border-radius: 9999px;
+      background: var(--report-accent);
+      opacity: 0.88;
+    }
+    .report-document :where(.report-md-list--ul > li > .min-w-0) { flex: 1 1 auto; min-width: 0; }
+    .report-document :where(.report-md-list--ul ul) { margin: 0.35rem 0 0.15rem; width: 100%; }
+    .report-document :where(.report-md-list--ul ul > li)::before {
+      width: 0.32rem;
+      height: 0.32rem;
+      margin-top: 0.55rem;
+      opacity: 0.72;
+    }
+    .report-document :where(.report-md-list--ol) {
+      list-style-type: decimal;
+      list-style-position: outside;
+      padding-left: 1.5rem;
+    }
+    .report-document :where(.report-md-list--ol > li) {
+      margin: 0.45rem 0;
+      padding-left: 0.2rem;
+    }
+    .report-document :where(.report-md-list--ol > li::marker) { font-weight: 700; color: #64748b; }
+    .report-document :where(ul:not(.report-md-list--ul)) { list-style: none; padding-left: 0; }
+    .report-document :where(ul:not(.report-md-list--ul) > li) {
       position: relative;
       padding-left: 1.35rem;
-      margin: 0.4em 0;
+      margin: 0.45rem 0;
     }
-    .report-document :where(ul > li)::before {
+    .report-document :where(ul:not(.report-md-list--ul) > li)::before {
       content: "";
       position: absolute;
       left: 0.15rem;
@@ -130,9 +186,6 @@ export function wrapReportDocumentHtml(
       background: var(--report-accent);
       opacity: 0.85;
     }
-    .report-document :where(ol) { padding-left: 1.35rem; }
-    .report-document :where(ol > li) { margin: 0.4em 0; padding-left: 0.25rem; }
-    .report-document :where(ol > li::marker) { font-weight: 700; color: #64748b; }
     .report-document :where(a) {
       color: #b91c1c;
       text-decoration: underline;
@@ -164,14 +217,73 @@ export function wrapReportDocumentHtml(
       border: 1px solid rgba(124, 58, 237, 0.12);
       font-family: ui-monospace, monospace;
     }
-    .report-document :where(pre) {
-      background: #1e293b;
-      color: #e2e8f0;
-      padding: 1rem;
+    .report-document :where(.report-copy-snippet) {
+      margin: 1.15rem 0;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgb(51 65 85);
+      background: #0f172a;
+      box-shadow: 0 4px 14px rgb(15 23 42 / 0.22);
+    }
+    .report-document :where(.report-copy-snippet__toolbar) {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid rgb(51 65 85 / 0.85);
+      background: rgb(30 41 59 / 0.96);
+    }
+    .report-document :where(.report-copy-snippet__toolbar-title) {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #94a3b8;
+    }
+    .report-document :where(.report-copy-snippet__copy-btn) {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-shrink: 0;
+      padding: 0.35rem 0.65rem;
+      border: none;
       border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #475569;
+      color: #f8fafc;
+    }
+    .report-document :where(.report-copy-snippet__copy-btn:hover) {
+      background: #64748b;
+    }
+    .report-document :where(.report-copy-snippet__copy-btn--done) {
+      background: rgb(5 150 105 / 0.28);
+      color: #6ee7b7;
+    }
+    .report-document :where(.report-copy-snippet__copy-icon) {
+      width: 14px;
+      height: 14px;
+    }
+    .report-document :where(.report-copy-snippet__body) {
+      max-height: min(70vh, 28rem);
       overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .report-document :where(.report-copy-snippet pre) {
+      margin: 0;
+      max-width: 100%;
+      padding: 1rem;
       font-size: 13px;
       line-height: 1.65;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: transparent;
+      color: #f1f5f9;
+      border: none;
+      border-radius: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
     .report-document :where(pre code) {
       background: transparent;
@@ -196,10 +308,38 @@ export function wrapReportDocumentHtml(
       height: auto;
       border-radius: 0.5rem;
     }
+    .report-toc {
+      margin-bottom: 1.5rem;
+      padding: 1rem 1.25rem;
+      border-radius: 1rem;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      font-size: 0.9rem;
+    }
+    .report-toc ul { list-style: none; margin: 0; padding: 0; }
+    .report-toc a { color: #b91c1c; text-decoration: none; }
+    .report-toc a:hover { text-decoration: underline; }
+    @media print {
+      body {
+        background: #fff;
+        padding: 0;
+        font-size: 11pt;
+        color: #000;
+      }
+      .report-document { max-width: none; }
+      .report-document :where(h2) {
+        break-after: avoid;
+        background: transparent;
+        border-left-color: #333;
+      }
+      .report-document :where(.report-copy-snippet) {
+        break-inside: avoid;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="report-document prose prose-slate max-w-none">${bodyInnerHtml}</div>
+  <div class="report-document report-document--surface prose prose-slate max-w-none">${bodyInnerHtml}</div>
 </body>
 </html>`;
 }

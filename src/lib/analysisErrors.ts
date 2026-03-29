@@ -29,7 +29,7 @@ export function classifyAnalysisError(error: unknown): AnalysisErrorKind {
     if (st >= 400 && st <= 499) return "bad_request";
   }
   const rec = error as { name?: string; status?: number };
-  if (rec.name === "ApiError" && typeof rec.status === "number") {
+  if ((rec.name === "ApiError" || rec.name === "APIError") && typeof rec.status === "number") {
     const st = rec.status;
     if (st === 429) return "rate_limited";
     if (st === 401) return "auth";

@@ -2,7 +2,10 @@ node_modules/
 build/
 dist/
 coverage/
+.project-data/
 .DS_Store
 *.log
+playwright-report/
+test-results/
 .env*
 !.env.example

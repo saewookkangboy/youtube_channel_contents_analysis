@@ -2,6 +2,8 @@
  * 심층 분석용 의미 정렬 힌트: Gemini `text-embedding-004` 배치 1회로
  * 제목·설명(또는 채널명·최근 제목) 간 코사인 유사도를 계산해,
  * 한국어 설명란·SEO 문장이 원문 주제에서 벗어나지 않도록 LLM 프롬프트에 주입한다.
+ * 수집 단계에서 dev 접미사를 프리패치하지 않은 경우, 이 임베딩 호출은 `loadDevOrchestrationPromptSuffix`와
+ * `Promise.all`로 겹쳐 진행되어 YouTube·Gemini 병렬 레인과 같은 지연 병합 패턴을 유지한다.
  */
 import { isTransientGeminiError, isUserAbortError, withRetry } from "./resilience";
 import { getGeminiClient } from "../services/geminiClient";

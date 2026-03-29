@@ -23,5 +23,7 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "types": ["vite/client"]
-  }
+  },
+  "include": ["src", "tests", "*.ts", "vite.config.ts", "vitest.config.ts"],
+  "exclude": ["e2e", "playwright.config.ts", "dist", "node_modules"]
 }

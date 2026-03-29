@@ -8,11 +8,29 @@ import {
   analyzeYouTubeChannel,
   analyzeYouTubeVideo,
   AlgorithmInsight,
-  isGeminiApiKeyConfigured,
   type GeminiAnalysisOptions,
 } from './services/geminiService';
-import { fetchYouTubeChannelData, fetchYouTubeVideoData, YouTubeChannelData, YouTubeVideoData } from './services/youtubeApiService';
+import {
+  analyzeYouTubeChannelWithOpenAI,
+  analyzeYouTubeVideoWithOpenAI,
+} from './services/openaiReportService';
+import type { YouTubeChannelData, YouTubeVideoData } from './services/youtubeApiService';
+import { runCollectPhaseInParallel } from './lib/analysisCollectParallel';
+import {
+  buildChannelAnalyticsGroundingBlock,
+  buildChannelFactPacket,
+  buildVideoAnalyticsGroundingBlock,
+  buildVideoFactPacket,
+  isAnyMainReportLlmKeyConfigured,
+  useOpenAiForMainReport,
+} from './lib/analysisPipeline';
+import {
+  canRunAnyVerification,
+  runParallelReportVerification,
+  type VerifyUiState,
+} from './services/reportVerificationService';
 import { AnalysisMarkdown } from './components/AnalysisMarkdown';
+import { ReportVerificationPanel } from './components/ReportVerificationPanel';
 import { GeminiUsageCard } from './components/GeminiUsageCard';
 import type { GeminiApiUsageSummary } from './lib/geminiApiUsage';
 import { motion, AnimatePresence } from 'motion/react';
@@ -51,6 +69,14 @@ import {
 import { useI18n } from './i18n/I18nContext';
 import { wrapReportDocumentHtml } from './lib/wrapReportDocumentHtml';
 import {
+  aggregateRecentVideosStats,
+  computeEngagementRates,
+  computeRecentVsChannelAvgRatio,
+  parseStatInt,
+} from './lib/dataAnalysis';
+import { recordAnalysisEpisode } from './dev/analysisReinforcement';
+import { DevAgentKitPanel } from './dev/DevAgentKitPanel';
+import {
   LineChart,
   Line,
   XAxis,
@@ -72,7 +98,9 @@ function devReportPreviewBoot(): {
   channelMd: string | null;
   videoMd: string | null;
 } | null {
-  if (!import.meta.env.DEV || typeof window === 'undefined') return null;
+  const allowReportPreview =
+    import.meta.env.DEV || import.meta.env.VITE_E2E_REPORT_PREVIEW === '1';
+  if (!allowReportPreview || typeof window === 'undefined') return null;
   const p = new URLSearchParams(window.location.search).get('reportPreview');
   if (!p) return null;
   const channelUrl =
@@ -116,6 +144,8 @@ export default function App() {
 
   const [channelApiUsage, setChannelApiUsage] = useState<GeminiApiUsageSummary | null>(null);
   const [videoApiUsage, setVideoApiUsage] = useState<GeminiApiUsageSummary | null>(null);
+  const [channelVerify, setChannelVerify] = useState<VerifyUiState | null>(null);
+  const [videoVerify, setVideoVerify] = useState<VerifyUiState | null>(null);
   const [sessionGeminiUsage, setSessionGeminiUsage] = useState({
     requestCount: 0,
     totalCostUsd: 0,
@@ -124,13 +154,20 @@ export default function App() {
     totalReasoningTokens: 0,
   });
 
-  /** YouTube Data API로 팩트를 가져온 뒤 웹 검색·URL 도구를 끄고 비용·지연을 줄임 */
-  const [factsOnlyMode, setFactsOnlyMode] = useState(false);
+  /** YouTube Data API로 팩트를 가져온 뒤 웹 검색·URL 도구를 끄고 비용·지연을 줄임 (키가 있으면 기본 켜기 → Fact 기반 출력 우선) */
+  const [factsOnlyMode, setFactsOnlyMode] = useState(
+    () => Boolean(import.meta.env.VITE_YOUTUBE_API_KEY),
+  );
   const hasYtApiKey = Boolean(import.meta.env.VITE_YOUTUBE_API_KEY);
+  /** 개발 전용: 멀티역할 오케스트레이션 프롬프트 접미사 (프로덕션 번들에서 동적 청크 제외) */
+  const devAgentOrchestration =
+    import.meta.env.DEV && import.meta.env.VITE_DEV_AGENT_ORCHESTRATION === '1';
 
   const mountedRef = useRef(true);
   const channelAbortRef = useRef<AbortController | null>(null);
   const videoAbortRef = useRef<AbortController | null>(null);
+  const channelVerifyAbortRef = useRef<AbortController | null>(null);
+  const videoVerifyAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -138,6 +175,8 @@ export default function App() {
       mountedRef.current = false;
       channelAbortRef.current?.abort();
       videoAbortRef.current?.abort();
+      channelVerifyAbortRef.current?.abort();
+      videoVerifyAbortRef.current?.abort();
     };
   }, []);
 
@@ -158,8 +197,9 @@ export default function App() {
   const handleAnalyze = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
-    if (!isGeminiApiKeyConfigured()) {
-      const msg = t('errNoGeminiKey');
+    const useOpenAi = useOpenAiForMainReport();
+    if (!isAnyMainReportLlmKeyConfigured()) {
+      const msg = t('errNoLlmKey');
       if (activeTab === 'channel') {
         setError(msg);
       } else {
@@ -175,6 +215,10 @@ export default function App() {
       channelAbortRef.current = ac;
       const signal = ac.signal;
 
+      channelVerifyAbortRef.current?.abort();
+      channelVerifyAbortRef.current = null;
+      setChannelVerify(null);
+
       setLoading(true);
       setError(null);
       setAnalysis(null);
@@ -182,19 +226,16 @@ export default function App() {
       setChannelData(null);
       setAlgorithmInsights(null);
       setChannelApiUsage(null);
+      const runStarted = performance.now();
 
       try {
-        let rawData: YouTubeChannelData | null = null;
         const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-
-        if (apiKey) {
-          try {
-            rawData = await fetchYouTubeChannelData(url, apiKey, { signal });
-          } catch (apiErr) {
-            if (classifyAnalysisError(apiErr) === 'aborted') throw apiErr;
-            console.warn("YouTube API fetch failed, falling back to Gemini search:", apiErr);
-          }
-        }
+        const { rawData, prefetchedDevOrchestrationBlock } = await runCollectPhaseInParallel({
+          kind: 'channel',
+          url,
+          youtubeApiKey: apiKey || undefined,
+          options: { signal, outputLocale: locale, devAgentOrchestration },
+        });
 
         if (!mountedRef.current || channelAbortRef.current !== ac) return;
         setChannelData(rawData);
@@ -202,14 +243,31 @@ export default function App() {
           factsOnly: hasYtApiKey && factsOnlyMode,
           outputLocale: locale,
           signal,
+          devAgentOrchestration,
+          prefetchedDevOrchestrationBlock,
         };
-        const result = await analyzeYouTubeChannel(url, rawData, geminiOpts);
+        const result = useOpenAi
+          ? await analyzeYouTubeChannelWithOpenAI(url, rawData, geminiOpts)
+          : await analyzeYouTubeChannel(url, rawData, geminiOpts);
 
         if (!mountedRef.current || channelAbortRef.current !== ac) return;
         setAnalysis(result.text || t('resultEmpty'));
         setSources(result.sources || []);
         setAlgorithmInsights(result.algorithmInsights || null);
         setChannelApiUsage(result.apiUsage);
+        if (import.meta.env.DEV) {
+          const textForC = result.text || '';
+          const completeness = analyzeReportCompleteness('channel', textForC, locale);
+          recordAnalysisEpisode({
+            at: new Date().toISOString(),
+            kind: 'channel',
+            ok: true,
+            durationMs: Math.round(performance.now() - runStarted),
+            promptTokens: result.apiUsage?.usage.inputTokens ?? 0,
+            outputTokens: result.apiUsage?.usage.outputTokens ?? 0,
+            completenessOk: completeness.ok,
+          });
+        }
         if (result.apiUsage && !result.apiUsage.noMetadata) {
           setSessionGeminiUsage((prev) => ({
             requestCount: prev.requestCount + 1,
@@ -219,6 +277,31 @@ export default function App() {
             totalReasoningTokens:
               prev.totalReasoningTokens + (result.apiUsage!.usage.outputTokenDetails?.reasoningTokens ?? 0),
           }));
+        }
+
+        const grounding =
+          rawData != null
+            ? `${buildChannelFactPacket(rawData)}\n${buildChannelAnalyticsGroundingBlock(rawData)}`
+            : '';
+        channelVerifyAbortRef.current?.abort();
+        const vac = new AbortController();
+        channelVerifyAbortRef.current = vac;
+        if (canRunAnyVerification()) {
+          setChannelVerify({ phase: 'running' });
+          const reportMd = result.text || '';
+          void runParallelReportVerification({
+            kind: 'channel',
+            targetUrl: url,
+            groundingContext: grounding,
+            reportMarkdown: reportMd,
+            locale,
+            signal: vac.signal,
+          }).then((res) => {
+            if (!mountedRef.current || channelVerifyAbortRef.current !== vac) return;
+            setChannelVerify({ phase: 'complete', result: res });
+          });
+        } else {
+          setChannelVerify(null);
         }
       } catch (err) {
         if (!mountedRef.current || channelAbortRef.current !== ac) return;
@@ -242,6 +325,10 @@ export default function App() {
       videoAbortRef.current = ac;
       const signal = ac.signal;
 
+      videoVerifyAbortRef.current?.abort();
+      videoVerifyAbortRef.current = null;
+      setVideoVerify(null);
+
       setVideoLoading(true);
       setVideoError(null);
       setVideoAnalysis(null);
@@ -249,19 +336,16 @@ export default function App() {
       setVideoData(null);
       setVideoAlgorithmInsights(null);
       setVideoApiUsage(null);
+      const runStarted = performance.now();
 
       try {
-        let rawData: YouTubeVideoData | null = null;
         const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-
-        if (apiKey) {
-          try {
-            rawData = await fetchYouTubeVideoData(videoUrl, apiKey, { signal });
-          } catch (apiErr) {
-            if (classifyAnalysisError(apiErr) === 'aborted') throw apiErr;
-            console.warn("YouTube API fetch failed, falling back to Gemini search:", apiErr);
-          }
-        }
+        const { rawData, prefetchedDevOrchestrationBlock } = await runCollectPhaseInParallel({
+          kind: 'video',
+          url: videoUrl,
+          youtubeApiKey: apiKey || undefined,
+          options: { signal, outputLocale: locale, devAgentOrchestration },
+        });
 
         if (!mountedRef.current || videoAbortRef.current !== ac) return;
         setVideoData(rawData);
@@ -269,14 +353,31 @@ export default function App() {
           factsOnly: hasYtApiKey && factsOnlyMode,
           outputLocale: locale,
           signal,
+          devAgentOrchestration,
+          prefetchedDevOrchestrationBlock,
         };
-        const result = await analyzeYouTubeVideo(videoUrl, rawData, geminiOpts);
+        const result = useOpenAi
+          ? await analyzeYouTubeVideoWithOpenAI(videoUrl, rawData, geminiOpts)
+          : await analyzeYouTubeVideo(videoUrl, rawData, geminiOpts);
 
         if (!mountedRef.current || videoAbortRef.current !== ac) return;
         setVideoAnalysis(result.text || t('resultEmpty'));
         setVideoSources(result.sources || []);
         setVideoAlgorithmInsights(result.algorithmInsights || null);
         setVideoApiUsage(result.apiUsage);
+        if (import.meta.env.DEV) {
+          const textForV = result.text || '';
+          const completeness = analyzeReportCompleteness('video', textForV, locale);
+          recordAnalysisEpisode({
+            at: new Date().toISOString(),
+            kind: 'video',
+            ok: true,
+            durationMs: Math.round(performance.now() - runStarted),
+            promptTokens: result.apiUsage?.usage.inputTokens ?? 0,
+            outputTokens: result.apiUsage?.usage.outputTokens ?? 0,
+            completenessOk: completeness.ok,
+          });
+        }
         if (result.apiUsage && !result.apiUsage.noMetadata) {
           setSessionGeminiUsage((prev) => ({
             requestCount: prev.requestCount + 1,
@@ -286,6 +387,31 @@ export default function App() {
             totalReasoningTokens:
               prev.totalReasoningTokens + (result.apiUsage!.usage.outputTokenDetails?.reasoningTokens ?? 0),
           }));
+        }
+
+        const videoGrounding =
+          rawData != null
+            ? `${buildVideoFactPacket(rawData)}\n${buildVideoAnalyticsGroundingBlock(rawData)}`
+            : '';
+        videoVerifyAbortRef.current?.abort();
+        const vvac = new AbortController();
+        videoVerifyAbortRef.current = vvac;
+        if (canRunAnyVerification()) {
+          setVideoVerify({ phase: 'running' });
+          const reportMdV = result.text || '';
+          void runParallelReportVerification({
+            kind: 'video',
+            targetUrl: videoUrl,
+            groundingContext: videoGrounding,
+            reportMarkdown: reportMdV,
+            locale,
+            signal: vvac.signal,
+          }).then((res) => {
+            if (!mountedRef.current || videoVerifyAbortRef.current !== vvac) return;
+            setVideoVerify({ phase: 'complete', result: res });
+          });
+        } else {
+          setVideoVerify(null);
         }
       } catch (err) {
         if (!mountedRef.current || videoAbortRef.current !== ac) return;
@@ -348,6 +474,7 @@ export default function App() {
   };
 
   const currentAnalysis = activeTab === 'channel' ? analysis : videoAnalysis;
+  const currentVerify = activeTab === 'channel' ? channelVerify : videoVerify;
   const currentLoading = activeTab === 'channel' ? loading : videoLoading;
   const currentError = activeTab === 'channel' ? error : videoError;
   const currentSources = activeTab === 'channel' ? sources : videoSources;
@@ -375,12 +502,13 @@ export default function App() {
       pct === null || Number.isNaN(pct) ? 0 : Math.min(100, pct * 10);
 
     if (activeTab === 'video' && videoData) {
-      const views = parseInt(videoData.views, 10) || 0;
-      const likes = parseInt(videoData.likes, 10) || 0;
-      const comments = parseInt(videoData.comments, 10) || 0;
-      const engagementPct = views > 0 ? ((likes + comments) / views) * 100 : null;
-      const likeRatePct = views > 0 ? (likes / views) * 100 : null;
-      const commentRatePct = views > 0 ? (comments / views) * 100 : null;
+      const views = parseStatInt(videoData.views);
+      const likes = parseStatInt(videoData.likes);
+      const comments = parseStatInt(videoData.comments);
+      const er = computeEngagementRates(views, likes, comments);
+      const engagementPct = er.engagementPct;
+      const likeRatePct = er.likeRatePct;
+      const commentRatePct = er.commentRatePct;
       return {
         scopeLabel: t('kpiScopeVideo'),
         rows: [
@@ -397,26 +525,20 @@ export default function App() {
 
     if (activeTab === 'channel' && channelData && channelData.recentVideos.length > 0) {
       const { recentVideos } = channelData;
-      let views = 0;
-      let likes = 0;
-      let comments = 0;
-      for (const v of recentVideos) {
-        views += parseInt(v.views, 10) || 0;
-        likes += parseInt(v.likes, 10) || 0;
-        comments += parseInt(v.comments, 10) || 0;
-      }
-      const engagementPct = views > 0 ? ((likes + comments) / views) * 100 : null;
-      const likeRatePct = views > 0 ? (likes / views) * 100 : null;
-      const commentRatePct = views > 0 ? (comments / views) * 100 : null;
+      const agg = aggregateRecentVideosStats(recentVideos);
+      const er = computeEngagementRates(agg.views, agg.likes, agg.comments);
+      const engagementPct = er.engagementPct;
+      const likeRatePct = er.likeRatePct;
+      const commentRatePct = er.commentRatePct;
 
-      const totalViews = parseInt(channelData.totalViews, 10) || 0;
-      const videoCount = parseInt(channelData.videoCount, 10) || 0;
+      const totalViews = parseStatInt(channelData.totalViews);
+      const videoCount = parseStatInt(channelData.videoCount);
       const channelAvgViews = videoCount > 0 ? totalViews / videoCount : null;
-      const recentAvgViews = recentVideos.length > 0 ? views / recentVideos.length : null;
+      const recentAvgViews = agg.count > 0 ? agg.views / agg.count : null;
       let recentVsChannel: string | null = null;
       let recentVsBarFill = 0;
-      if (channelAvgViews && channelAvgViews > 0 && recentAvgViews !== null) {
-        const ratio = recentAvgViews / channelAvgViews;
+      const ratio = computeRecentVsChannelAvgRatio(recentAvgViews, channelAvgViews);
+      if (ratio !== null) {
         recentVsBarFill = Math.min(100, ratio * 50);
         recentVsChannel = `${ratio >= 1 ? '+' : ''}${((ratio - 1) * 100).toFixed(0)}%`;
       }
@@ -444,7 +566,7 @@ export default function App() {
         scopeLabel: t('kpiScopeChannel', recentVideos.length),
         rows,
         footnote:
-          views === 0
+          agg.views === 0
             ? t('kpiFootnoteNoViewsChannel')
             : t('kpiFootnoteLowChannel'),
       };
@@ -637,8 +759,8 @@ export default function App() {
                   <Youtube className="w-4 h-4 text-red-600" />
                 </div>
               </div>
-              <p className="mt-4 text-gray-500 font-medium animate-pulse">
-                {hasYtApiKey && factsOnlyMode ? t('loadingFacts') : t('loadingWeb')}
+              <p className="mt-4 text-center text-gray-500 font-medium animate-pulse">
+                {hasYtApiKey ? t('loadingPipelineParallel') : t('loadingWeb')}
               </p>
               <button
                 type="button"
@@ -937,6 +1059,9 @@ export default function App() {
                       <ExternalLink className="h-5 w-5" />
                     </a>
                   </div>
+                  <p className="mb-6 max-w-3xl text-xs leading-relaxed text-gray-500 sm:mb-8">
+                    {t('deepAnalysisPipelineNote')}
+                  </p>
 
                   {reportCompleteness && !reportCompleteness.ok && (
                     <div
@@ -1064,15 +1189,18 @@ export default function App() {
                   
                   <div
                     id="report-content"
-                    className="report-document prose prose-slate max-w-none min-w-0
+                    className="report-document report-document--surface prose prose-slate max-w-none min-w-0
                     prose-headings:font-bold prose-headings:tracking-tight
-                    prose-p:text-[15px] prose-p:leading-[1.82]
-                    prose-a:text-red-600 hover:prose-a:text-red-700
-                    prose-ul:mt-4 prose-ul:mb-6 prose-li:my-2"
+                    prose-p:text-[15px] prose-p:leading-[1.78]
+                    prose-a:text-red-600 hover:prose-a:text-red-700"
                   >
                     <AnalysisMarkdown content={currentAnalysis} />
                   </div>
                 </div>
+
+                {currentAnalysis && currentVerify != null && (
+                  <ReportVerificationPanel state={currentVerify} />
+                )}
 
                 {currentSources.length > 0 && (
                   <div className="mt-6 rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm sm:mt-8 sm:p-8 md:p-12">
@@ -1145,6 +1273,7 @@ export default function App() {
           </p>
         </div>
       </footer>
+      <DevAgentKitPanel />
     </div>
   );
 }

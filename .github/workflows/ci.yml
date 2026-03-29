@@ -23,5 +23,18 @@ jobs:
       - name: Typecheck
         run: npm run lint
 
+      - name: Unit tests
+        run: npm run test
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: E2E (심층 분석 팩트 미리보기)
+        run: npm run test:e2e
+
+      - name: Security audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - name: Build
         run: npm run build

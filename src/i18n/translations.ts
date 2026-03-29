@@ -25,8 +25,11 @@ const ko = {
   emptyStateScopeLead: '포함 범위(Agent.md 기준): ',
   emptyStateScopeBody:
     '초기 24시간 성과 진단, 제목·썸네일·오프닝 정합성, 알고리즘·SEO(표 형식), 우선 실행 7일 액션 플랜 등 고정 섹션을 유지합니다. API 키가 있으면 YouTube 메타데이터를, 없으면 검색·근거 링크로 보완합니다.',
-  loadingFacts: 'YouTube 팩트와 모델로 리포트를 작성하는 중입니다…',
+  loadingPipelineParallel:
+    'YouTube Data API로 팩트를 수집하는 동시에 분석 준비를 병렬로 진행한 뒤, Gemini 임베딩·메인 리포트를 이어서 생성합니다…',
   loadingWeb: '웹 검색과 모델 추론으로 인사이트를 모으는 중입니다…',
+  deepAnalysisPipelineNote:
+    '데이터 파이프라인: YouTube Data API(설정 시) 팩트 수집과 분석 준비는 병렬로 묶고, 팩트가 있으면 Gemini 임베딩과 리포트 생성이 순차·병합됩니다. 후단 이중 팩트 검증은 OpenAI·Gemini 키가 있으면 병렬로 동작합니다.',
   retry: '다시 시도',
   sidebarChannelMetrics: '분석 핵심 지표',
   growthDiagP0: '성장 진단 (P0)',
@@ -109,14 +112,16 @@ const ko = {
   footerMade: 'made with',
   errNoGeminiKey:
     'Gemini API 키가 없습니다. 프로젝트 루트에 .env 또는 .env.local을 만들고 GEMINI_API_KEY를 설정한 뒤 개발 서버를 다시 실행해 주세요.',
+  errNoLlmKey:
+    '리포트 생성에 쓸 API 키가 없습니다. .env에 GEMINI_API_KEY(메인 우선) 또는 GEMINI 없을 때만 OPENAI_API_KEY를 넣고 개발 서버를 다시 실행해 주세요.',
   errChannelFailed: '채널 분석에 실패했습니다. URL을 확인한 뒤 다시 시도해 주세요.',
   errVideoFailed: '영상 분석에 실패했습니다. URL을 확인한 뒤 다시 시도해 주세요.',
   cancelAnalyze: '취소',
   errAborted: '요청이 중단되었습니다.',
   errRateLimited:
-    'API 호출 한도에 도달했습니다. 잠시 후 다시 시도하거나, YouTube·Gemini 쿼터·플랜을 확인해 주세요.',
+    'API 호출 한도에 도달했습니다. 잠시 후 다시 시도하거나, YouTube·OpenAI·Gemini 쿼터·플랜을 확인해 주세요.',
   errAuth:
-    '인증에 실패했습니다. GEMINI_API_KEY·VITE_YOUTUBE_API_KEY가 올바른지, 만료되지 않았는지 확인해 주세요.',
+    '인증에 실패했습니다. OPENAI_API_KEY·GEMINI_API_KEY·VITE_YOUTUBE_API_KEY가 올바른지, 만료되지 않았는지 확인해 주세요.',
   errForbidden: '이 리소스에 접근할 권한이 없습니다. API 키 제한(HTTP 리퍼러·IP 등)을 확인해 주세요.',
   errBadRequest: '요청 형식이 잘못되었거나 API가 거부했습니다. URL과 키 설정을 확인해 주세요.',
   errNotFound: '채널 또는 영상을 찾을 수 없습니다. URL이 공개되어 있는지 확인해 주세요.',
@@ -126,7 +131,7 @@ const ko = {
   resultEmpty: '분석 결과가 비어 있습니다. 잠시 후 다시 시도해 주세요.',
   downloadFilenameChannel: '유튜브_채널_분석.md',
   downloadFilenameVideo: '유튜브_영상_분석.md',
-  usageCardTitle: 'Gemini API 사용량',
+  usageCardTitle: 'LLM 사용량 (마지막 요청)',
   usageCardBlurbBefore: '실제 응답의 토큰 메타데이터와 ',
   usageCardBlurbAfter: ' 단가표 기준 추정 비용입니다. 청구서와 다를 수 있습니다.',
   usageNoMetadata:
@@ -142,7 +147,7 @@ const ko = {
   usageCalcUnavailable: '계산 불가',
   usageRunOnceHint: '분석을 한 번 실행하면 마지막 호출의 사용량이 표시됩니다.',
   usageSessionLabel: '이 페이지 세션 누적',
-  usageSessionNone: '아직 기록된 Gemini 호출이 없습니다.',
+  usageSessionNone: '아직 기록된 LLM 호출이 없습니다.',
   usageCalls: '호출 수',
   usageCallsSuffix: '회',
   usageCumulativePrompt: '누적 프롬프트',
@@ -158,6 +163,31 @@ const ko = {
     '- [검증] 알고리즘/SEO 구간에 Markdown 표(헤더 + `|---|` 구분 행)가 감지되지 않았습니다.',
   appendixChecklistIntro: '- [검증] 체크리스트 표 헤더 불완전:',
   reportViewerTitle: '채널인사이트 · 분석 리포트',
+  reportCopyBlockTitle: '코드 · 복사',
+  reportCopyBlockTitlePrompt: '프롬프트 · 복사',
+  reportCopyButton: '복사',
+  reportCopied: '복사됨',
+  reportCopyAria: '클립보드에 복사',
+  reportTocTitle: '섹션 바로가기',
+  reportTocAria: '리포트 주요 제목 목록',
+  verifySectionTitle: '이중 팩트 검증',
+  verifySectionSubtitle:
+    '심층 분석 직후 OpenAI·Gemini가 동시에 본문을 교차 점검합니다. YouTube API 팩트가 있으면 근거로 사용합니다.',
+  verifyProviderOpenai: 'OpenAI',
+  verifyProviderGemini: 'Google Gemini',
+  verifySkippedNoKey: 'API 키 없음',
+  verifyRunning: '병렬 검증 중…',
+  verifyRiskLow: '낮음',
+  verifyRiskMedium: '중간',
+  verifyRiskHigh: '높음',
+  verifyRiskLabel: '리스크',
+  verifySummaryLabel: '요약',
+  verifyIssuesTitle: '플래그된 주장',
+  verifyError: '오류',
+  verifyVerdict_supported: '근거와 일치',
+  verifyVerdict_uncertain: '불확실',
+  verifyVerdict_likely_hallucination: '할루시네이션 가능',
+  verifyVerdict_contradicts_grounding: '근거와 충돌',
 } as const;
 
 const en: Record<TranslationKey, string | ((n: number) => string)> = {
@@ -183,8 +213,11 @@ const en: Record<TranslationKey, string | ((n: number) => string)> = {
   emptyStateScopeLead: 'Scope (per Agent.md): ',
   emptyStateScopeBody:
     'Fixed sections include first-24h diagnostics, title·thumbnail·opening alignment, algorithm & SEO (table), and a prioritized 7-day action plan. With an API key we use YouTube metadata; otherwise search and source links fill gaps.',
-  loadingFacts: 'Building the report from YouTube facts and the model…',
+  loadingPipelineParallel:
+    'Fetching YouTube Data API facts in parallel with analysis prep, then Gemini embeddings and the main report…',
   loadingWeb: 'Gathering insights via web search and model reasoning…',
+  deepAnalysisPipelineNote:
+    'Pipeline: when configured, YouTube Data API fact collection runs in parallel with analysis prep; with facts, Gemini embeddings and report generation follow. Dual fact-check runs OpenAI and Gemini in parallel when keys are set.',
   retry: 'Try again',
   sidebarChannelMetrics: 'Key analysis metrics',
   growthDiagP0: 'Growth diagnostics (P0)',
@@ -266,6 +299,8 @@ const en: Record<TranslationKey, string | ((n: number) => string)> = {
   footerMade: 'made with',
   errNoGeminiKey:
     'No Gemini API key. Create .env or .env.local in the project root, set GEMINI_API_KEY, and restart the dev server.',
+  errNoLlmKey:
+    'No API key for report generation. Add GEMINI_API_KEY (preferred for the main report) or OPENAI_API_KEY (fallback when Gemini is unset) to .env and restart the dev server.',
   errChannelFailed: 'Channel analysis failed. Check the URL and try again.',
   errVideoFailed: 'Video analysis failed. Check the URL and try again.',
   cancelAnalyze: 'Cancel',
@@ -283,7 +318,7 @@ const en: Record<TranslationKey, string | ((n: number) => string)> = {
   resultEmpty: 'The analysis result was empty. Please try again shortly.',
   downloadFilenameChannel: 'youtube_channel_analysis.md',
   downloadFilenameVideo: 'youtube_video_analysis.md',
-  usageCardTitle: 'Gemini API usage',
+  usageCardTitle: 'LLM usage (last request)',
   usageCardBlurbBefore: 'Estimated cost from token metadata in the response and the ',
   usageCardBlurbAfter: ' price table. May differ from your invoice.',
   usageNoMetadata:
@@ -299,7 +334,7 @@ const en: Record<TranslationKey, string | ((n: number) => string)> = {
   usageCalcUnavailable: 'Unable to calculate',
   usageRunOnceHint: 'Run analysis once to see usage for the last call.',
   usageSessionLabel: 'Session total (this page)',
-  usageSessionNone: 'No Gemini calls recorded yet.',
+  usageSessionNone: 'No LLM calls recorded yet.',
   usageCalls: 'Calls',
   usageCallsSuffix: ' calls',
   usageCumulativePrompt: 'Cumulative prompt',
@@ -315,6 +350,31 @@ const en: Record<TranslationKey, string | ((n: number) => string)> = {
     '- [check] No Markdown table (header + `|---|` separator) detected in the Algorithm/SEO section.',
   appendixChecklistIntro: '- [check] Checklist table header incomplete:',
   reportViewerTitle: 'Channel Insight · Analysis report',
+  reportCopyBlockTitle: 'Code · copy',
+  reportCopyBlockTitlePrompt: 'Prompt · copy',
+  reportCopyButton: 'Copy',
+  reportCopied: 'Copied',
+  reportCopyAria: 'Copy to clipboard',
+  reportTocTitle: 'Section outline',
+  reportTocAria: 'Main report headings',
+  verifySectionTitle: 'Dual fact-check',
+  verifySectionSubtitle:
+    'Right after the deep report, OpenAI and Gemini review the body in parallel. YouTube API facts are used as grounding when available.',
+  verifyProviderOpenai: 'OpenAI',
+  verifyProviderGemini: 'Google Gemini',
+  verifySkippedNoKey: 'No API key',
+  verifyRunning: 'Running parallel verification…',
+  verifyRiskLow: 'Low',
+  verifyRiskMedium: 'Medium',
+  verifyRiskHigh: 'High',
+  verifyRiskLabel: 'Risk',
+  verifySummaryLabel: 'Summary',
+  verifyIssuesTitle: 'Flagged claims',
+  verifyError: 'Error',
+  verifyVerdict_supported: 'Supported',
+  verifyVerdict_uncertain: 'Uncertain',
+  verifyVerdict_likely_hallucination: 'Likely hallucination',
+  verifyVerdict_contradicts_grounding: 'Contradicts grounding',
 };
 
 const LOCALES: Record<AppLocale, Record<TranslationKey, string | ((n: number) => string)>> = {

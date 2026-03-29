@@ -67,6 +67,24 @@ export function isTransientGeminiError(error: unknown): boolean {
   return /429|503|504|502|RESOURCE_EXHAUSTED|UNAVAILABLE|quota|rate limit/i.test(msg);
 }
 
+/** OpenAI Node SDK `APIError` 및 네트워크 실패 */
+export function isTransientOpenAIError(error: unknown): boolean {
+  if (isUserAbortError(error)) return false;
+  if (!error || typeof error !== "object") {
+    const msg = errorMessage(error);
+    return /network|fetch|Failed to fetch|timeout/i.test(msg);
+  }
+  const rec = error as { name?: string; status?: number; message?: string };
+  if ((rec.name === "APIError" || rec.name === "ApiError") && typeof rec.status === "number") {
+    return isRetryableHttpStatus(rec.status);
+  }
+  const msg = errorMessage(error);
+  if (/timeout|Failed to fetch|NetworkError|ECONNRESET|ETIMEDOUT/i.test(msg)) {
+    return true;
+  }
+  return /429|503|504|502|rate limit|overloaded/i.test(msg);
+}
+
 export type WithRetryOptions = {
   maxAttempts: number;
   baseDelayMs: number;
