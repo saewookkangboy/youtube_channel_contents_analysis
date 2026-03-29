@@ -1,4 +1,6 @@
+import { FinishReason } from "@google/genai";
 import { buildChannelFactPacket, buildVideoFactPacket } from "../lib/analysisPipeline";
+import { isTransientGeminiError, withRetry } from "../lib/resilience";
 import {
   buildChannelKoreanSemanticGroundingBlock,
   buildVideoKoreanSemanticGroundingBlock,
@@ -8,6 +10,60 @@ import { getGeminiClient } from "./geminiClient";
 import { YouTubeChannelData, YouTubeVideoData } from "./youtubeApiService";
 
 export { isGeminiApiKeyConfigured } from "./geminiClient";
+
+const GEMINI_GENERATE_RETRY = {
+  maxAttempts: 4,
+  baseDelayMs: 1_200,
+  maxDelayMs: 20_000,
+} as const;
+
+/** 긴 심층 리포트가 기본 상한에서 잘리는 것을 줄이기 위한 출력 토큰 상한 */
+const REPORT_MAX_OUTPUT_TOKENS_CHANNEL = 8192;
+const REPORT_MAX_OUTPUT_TOKENS_VIDEO = 8192;
+
+/**
+ * 번호 목록만 따르다 보면 모델이 `##` 없이 굵게·목록만 쓰는 경우가 있어,
+ * 완성도 검사·보내기와 맞지 않는다. 각 메인 섹션을 `##` 한 줄로 고정한다.
+ */
+function markdownSectionHeadingContract(locale: "ko" | "en", reportType: "channel" | "video"): string {
+  const rangeKo = reportType === "channel" ? "0~15" : "0~8";
+  const rangeEn = reportType === "channel" ? "0–15" : "0–8";
+  if (locale === "en") {
+    return `
+[Markdown \`##\` headings — required]
+- Start **each** main outline section (${rangeEn}) with **exactly one** line: \`## <n>. <emoji> <title>\` (titles in English per OUTPUT LANGUAGE). Example: \`## 0. 🔍 Fact check & raw data\`.
+- Put all bullets and paragraphs **under** that \`##\` line. Do **not** replace section headers with only **bold** lines or list items.
+- Use \`###\` only for true subsections (e.g. each **day** inside the 7-day plan).
+- **Do not skip** outline sections; if data is missing write **No data** but keep the \`##\` heading.
+- Inside **Algorithm & SEO**, include at least one **GFM table** (pipe columns + \`|---|---|\` separator row) with the three checklist columns (optimization item · current status · improvement actions).
+- After sections ${rangeEn}, add the **7-day action plan** as its own \`##\` heading per the output rules, then **one** \`\`\`json fenced block at the very end (algorithmInsights only).
+`;
+  }
+  return `
+[마크다운 \`##\` 제목 — 필수]
+- 위 번호 목록의 **각 메인 섹션**(${rangeKo})은 반드시 \`## 번호. 이모지 제목\` **한 줄**로 시작한다(예: \`## 0. 🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)\`).
+- 본문은 해당 \`##\` 바로 아래에만 쓴다. **굵게만** 쓰거나 목록 텍스트로 섹션 제목을 대체하지 않는다.
+- \`###\`은 7일 플랜의 **일차** 등 실제 소제목에만 쓴다.
+- **섹션을 생략하지 않는다.** 데이터가 없으면 "데이터 없음"을 쓰되 \`##\` 줄은 유지한다.
+- **알고리즘 및 SEO** 섹션 안에 GFM 표(파이프 열 + 구분 행)로 **세 열**(최적화 항목 · 현재 상태 진단 · 구체적인 개선 방안) 체크리스트를 반드시 넣는다.
+- 본문 섹션(${rangeKo}) 후 출력 규칙의 **7일 액션 플랜**용 \`##\` 제목을 쓰고, 맨 마지막에 algorithmInsights JSON 펜스(\`\`\`json)만 둔다.
+`;
+}
+
+function appendOutputTruncateNotice(
+  markdown: string,
+  finishReason: string | undefined,
+  locale: "ko" | "en",
+): string {
+  if (finishReason !== FinishReason.MAX_TOKENS && finishReason !== "MAX_TOKENS") {
+    return markdown;
+  }
+  const note =
+    locale === "en"
+      ? "\n\n> **Note:** Output hit the model length limit. The end of the report (7-day plan, table, or JSON block) may be incomplete — run **Analyze** again."
+      : "\n\n> **안내:** 출력 길이 한도에 도달해 응답이 중간에 끊겼을 수 있습니다. 끝부분(7일 플랜·표·JSON)이 없으면 **다시 분석**을 실행해 주세요.";
+  return `${markdown.trimEnd()}${note}`;
+}
 
 export interface AlgorithmInsight {
   label: string;
@@ -26,6 +82,8 @@ export interface GeminiAnalysisOptions {
   factsOnly?: boolean;
   /** UI 언어와 맞춰 리포트 본문·헤딩·JSON 라벨 언어를 맞춘다. 기본 ko. */
   outputLocale?: "ko" | "en";
+  /** 분석 취소·새 분석 시작 시 이전 요청을 중단한다. */
+  signal?: AbortSignal;
 }
 
 function shouldUseWebGroundingTools(
@@ -37,7 +95,7 @@ function shouldUseWebGroundingTools(
 }
 
 function buildStructuredReportRules(reportType: "channel" | "video", locale: "ko" | "en"): string {
-  const minSectionCount = reportType === "channel" ? 15 : 8;
+  const minSectionCount = reportType === "channel" ? 16 : 9;
 
   if (locale === "en") {
     const scopeLabel = reportType === "channel" ? "Channel analysis report" : "Video analysis report";
@@ -175,7 +233,8 @@ function extractAlgorithmInsightsFromMarkdown(markdown: string): {
   while ((m = fencePattern.exec(markdown)) !== null) {
     matches.push(m);
   }
-  for (const match of matches) {
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const match = matches[i];
     const body = match[1].trim();
     const insights = tryParseAlgorithmInsightsJsonBody(body);
     if (insights) {
@@ -194,7 +253,10 @@ export async function analyzeYouTubeVideo(
   const model = "gemini-3.1-pro-preview"; // Using pro for better creative prompt generation
 
   const factBlock = rawData ? buildVideoFactPacket(rawData) : "";
-  const semanticGroundingBlock = rawData ? await buildVideoKoreanSemanticGroundingBlock(rawData) : "";
+  const sig = options?.signal;
+  const semanticGroundingBlock = rawData
+    ? await buildVideoKoreanSemanticGroundingBlock(rawData, { signal: sig })
+    : "";
   const useWebTools = shouldUseWebGroundingTools(rawData, options?.factsOnly);
   const locale = options?.outputLocale === "en" ? "en" : "ko";
   const webToolLine = webToolCopy(locale, "video", useWebTools);
@@ -224,6 +286,8 @@ export async function analyzeYouTubeVideo(
     ${semanticGroundingBlock ? `${semanticGroundingBlock}\n` : ""}
 
     ${videoSectionLanguage}
+
+    ${markdownSectionHeadingContract(locale, "video")}
 
     0. **🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)**:
        - FACT_PACKET이 있으면 해당 JSON 수치·텍스트를 먼저 그대로 인용·나열한다. 없으면 검색·도구로 확보한 맥락을 "추정/출처"로 구분해 명시한다.
@@ -271,6 +335,18 @@ export async function analyzeYouTubeVideo(
          - **Call-to-Action (CTA)**: 롱폼 본편 시청이나 구독을 유도하는 명확한 액션 플랜
          - **썸네일 내 CTA 문구 추천 (Thumbnail CTA Text)**: 각 쇼츠 컨셉의 썸네일(또는 영상 내 텍스트 오버레이)에 포함할 구체적이고 강력한 Call-to-Action 텍스트 추천.
 
+    8. **🎬 영상 분석 — 마케터·PD 심층 인사이트 (Role-Based Video Analysis)**:
+       - 이 섹션은 **앞선 섹션(0~7)의 심층 분석 결과**를 바탕으로, 역할별로 **실무에 바로 쓸 수 있게** 재구성한다(중복 나열이 아니라 **요약·실행** 중심).
+       - 역할 구분선은 마크다운 제목 문법(#, ##, ###)을 쓰지 말고, 첫 줄은 단독 한 줄로 **마케터 (Marketer)** 만 굵게, 둘째 블록 시작 전에 단독 한 줄로 **영상 기획 및 PD (Producer / PD)** 만 굵게 쓴 뒤 각각 바로 아래에 본문을 이어 쓴다(따옴표 없이).
+       - **마케터 (Marketer)** 블록(굵은 라인 직후 본문):
+         - 콘텐츠 **기획·제작**에 활용할 **Lesson Learned(교훈)** — 구체 불릿.
+         - **다음 콘텐츠** 제작 시 **고려해야 할 포인트** — 체크리스트 또는 우선순위 불릿.
+         - 이 영상·채널 맥락을 **인스타그램 / 틱톡 / 링크드인**에 **공유·재배포**할 때 **플랫폼별**로 달라지는 **톤·포맷·비율·캡션·CTA·해시태그/키워드·커뮤니티 규범** 등 정리(플랫폼마다 소제목 또는 표로 구분).
+       - **영상 기획 및 PD (Producer / PD)** 블록(굵은 라인 직후 본문):
+         - **다음 콘텐츠** 제작을 위한 **아이디어** 및 **기획 방향** 제안(포맷, 각도, 연출·구성, 시리즈화 가능성).
+         - **참고 레퍼런스(벤치마킹 채널)** — 반드시 하위에 **Markdown 표**로 작성한다. 권장 열: **채널명** | **공식·대표 URL(채널 또는 대표 영상)** | **참고 포인트** | **팩트 체크(검증 상태·근거)**.
+         - **[필수] 벤치마킹 채널 팩트 체크**: (1) 웹 검색·URL 컨텍스트 등 **도구로 채널 존재·채널명-URL 대응**을 교차 확인한다. (2) **확인된 URL만** 표에 넣고, 페이지 제목·채널 핸들이 채널명과 **불일치하면 제외하거나 수정**한다. (3) **추측·날조 URL 금지**; 검증 불가 시 해당 행에 **검증 상태**를 "확인됨" / "부분 확인" / "추정" 중 하나로 명시하고, **근거**(검색 쿼리, 인용한 스니펫 요약, 또는 근거가 된 웹 URI)를 **팩트 체크** 열에 적는다. (4) 분석 대상 영상·채널(FACT_PACKET)과 **동일 채널을 벤치마크로 중복 기재하지 않는다**(필요 시 "본 채널"으로 구분). (5) 링크는 클릭 시 해당 채널/콘텐츠로 연결되는 **유효한 형식**으로 쓴다.
+
     ${algorithmInsightsJsonInstruction(locale, "video")}
 
     ${webToolLine}
@@ -281,16 +357,33 @@ export async function analyzeYouTubeVideo(
   `;
 
   try {
-    const response = await getGeminiClient().models.generateContent({
-      model: model,
-      contents: prompt,
-      config: {
-        ...(useWebTools ? { tools: [{ googleSearch: {} }] } : {}),
-        temperature: 0.7,
-      }
-    });
+    const response = await withRetry(
+      () =>
+        getGeminiClient().models.generateContent({
+          model: model,
+          contents: prompt,
+          config: {
+            abortSignal: sig,
+            ...(useWebTools ? { tools: [{ googleSearch: {} }] } : {}),
+            temperature: 0.7,
+            maxOutputTokens: REPORT_MAX_OUTPUT_TOKENS_VIDEO,
+          },
+        }),
+      {
+        ...GEMINI_GENERATE_RETRY,
+        signal: sig,
+        shouldRetry: (err) => isTransientGeminiError(err),
+        onRetry: (err, retryRound, delayMs) => {
+          console.warn(
+            `[Gemini video] 일시 오류 후 재시도 ${retryRound}/${GEMINI_GENERATE_RETRY.maxAttempts - 1} (${delayMs}ms 대기)`,
+            err,
+          );
+        },
+      },
+    );
 
     let text = response.text || "";
+    const finishReason = response.candidates?.[0]?.finishReason;
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const sources = chunks
       .filter(chunk => chunk.web?.uri)
@@ -301,6 +394,7 @@ export async function analyzeYouTubeVideo(
 
     const extractedInsights = extractAlgorithmInsightsFromMarkdown(text);
     text = extractedInsights.text;
+    text = appendOutputTruncateNotice(text, finishReason, locale);
     const algorithmInsights = extractedInsights.algorithmInsights;
 
     const apiUsage = buildGeminiApiUsageSummary(model, response.usageMetadata);
@@ -320,7 +414,10 @@ export async function analyzeYouTubeChannel(
   const model = "gemini-3-flash-preview";
 
   const factBlock = rawData ? buildChannelFactPacket(rawData) : "";
-  const semanticGroundingBlock = rawData ? await buildChannelKoreanSemanticGroundingBlock(rawData) : "";
+  const sig = options?.signal;
+  const semanticGroundingBlock = rawData
+    ? await buildChannelKoreanSemanticGroundingBlock(rawData, { signal: sig })
+    : "";
   const useWebTools = shouldUseWebGroundingTools(rawData, options?.factsOnly);
   const locale = options?.outputLocale === "en" ? "en" : "ko";
   const webToolLine = webToolCopy(locale, "channel", useWebTools);
@@ -348,6 +445,8 @@ export async function analyzeYouTubeChannel(
     ${semanticGroundingBlock ? `${semanticGroundingBlock}\n` : ""}
     
     ${channelSectionLanguage}
+
+    ${markdownSectionHeadingContract(locale, "channel")}
     
     0. **🔍 팩트 체크 및 로우 데이터 (Fact Check & Raw Data)**:
        - FACT_PACKET이 있으면 JSON의 구독자·총조회·영상수·최근 영상(rv) 수치를 먼저 그대로 인용·나열한다. 없으면 검색·도구 결과를 "추정/출처"로 구분해 명시한다.
@@ -419,6 +518,7 @@ export async function analyzeYouTubeChannel(
         - '내 시청자가 시청하는 다른 채널(유사 채널 및 경쟁 채널)'의 트렌드와 인기 요인을 분석.
         - 해당 채널들의 성공적인 콘텐츠 포맷, 주제, 업로드 주기 등을 파악하여 실제 채널 운영에 적용할 수 있는 벤치마킹 포인트 도출.
         - 이를 바탕으로 현재 채널에 즉시 도입해 볼 수 있는 **구체적인 콘텐츠 제작 아이디어 및 채널 운영 전략**을 제안.
+        - 구체 **채널명·URL**을 적을 때는 섹션 15의 **벤치마킹 채널 팩트 체크**와 동일한 원칙으로 검증·출처를 명시한다(미검증 URL·날조 링크 금지).
 
     14. **📱 유튜브 쇼츠(Shorts) 연계 및 활용 전략 (Shorts Strategy)**:
         - 현재 채널의 **가장 인기 있는 롱폼 콘텐츠(Top Performing Content)**를 기반으로 한 쇼츠(Shorts) 콘텐츠 구성 아이디어 제안.
@@ -428,6 +528,19 @@ export async function analyzeYouTubeChannel(
           2) **Core Content (핵심 전개 내용)**: 60초 이내로 압축된 핵심 하이라이트
           3) **Call-to-Action (CTA)**: 롱폼 본편 시청이나 구독을 유도하는 명확한 액션 플랜
           4) **썸네일 내 CTA 문구 추천 (Thumbnail CTA Text)**: 각 쇼츠 컨셉의 썸네일에 포함할 구체적이고 강력한 Call-to-Action 텍스트 추천.
+
+    15. **📣 채널 분석 — 마케터·PD 심층 인사이트 (Role-Based Channel Analysis)**:
+        - 이 섹션은 **앞선 섹션(0~14)의 심층 분석 결과**를 바탕으로, 역할별로 **실무에 바로 쓸 수 있게** 재구성한다(중복 나열이 아니라 **요약·실행** 중심).
+        - 역할 구분선은 마크다운 제목 문법(#, ##, ###)을 쓰지 말고, 첫 줄은 단독 한 줄로 **마케터 (Marketer)** 만 굵게, 둘째 블록 시작 전에 단독 한 줄로 **영상 기획 및 PD (Producer / PD)** 만 굵게 쓴 뒤 각각 바로 아래에 본문을 이어 쓴다(따옴표 없이).
+        - **마케터 (Marketer)** 블록(굵은 라인 직후 본문):
+          - 유튜브 채널 **마케팅** 관점의 **운영 팁**(브랜딩, 메시징, 퍼널, 협업·캠페인·스폰서 대응 등).
+          - **콘텐츠 기획 방향** 제안(타깃, 메시지, 콘텐츠 믹스, 시즌/캠페인 연계).
+          - 채널 운영 **방향·가이드**(우선순위, 금지/권장, KPI 관점).
+        - **영상 기획 및 PD (Producer / PD)** 블록(굵은 라인 직후 본문):
+          - 채널 운영에 필요한 **구체적 아이디어**(포맷, 시리즈, 에피소드 각도, 연출·구성, 촬영·편집 힌트).
+          - 앞선 분석을 **기획안** 형태로 압축(에피소드 후보, 훅 구조, 챕터 구성 등).
+          - **참고 레퍼런스(벤치마킹 채널)** — 반드시 하위에 **Markdown 표**로 작성한다. 권장 열: **채널명** | **공식·대표 URL** | **참고 포인트** | **팩트 체크(검증 상태·근거)**.
+          - **[필수] 벤치마킹 채널 팩트 체크**: (1) 웹 검색·URL 컨텍스트 등 **도구로 채널 존재·채널명-URL 대응**을 교차 확인한다. (2) **확인된 URL만** 표에 넣고, 페이지 제목·핸들이 채널명과 **불일치하면 제외하거나 수정**한다. (3) **추측·날조 URL 금지**; 검증 불가 시 해당 행에 **검증 상태**를 "확인됨" / "부분 확인" / "추정" 중 하나로 명시하고, **근거**(검색 쿼리, 스니펫 요약, 근거 URI)를 **팩트 체크** 열에 적는다. (4) 분석 대상 채널(FACT_PACKET·본 리포트 URL)과 **동일 엔티티를 벤치마크로 중복 나열하지 않는다**. (5) 링크는 **유효한 형식**으로 쓴다.
     
     ${algorithmInsightsJsonInstruction(locale, "channel")}
 
@@ -439,20 +552,37 @@ export async function analyzeYouTubeChannel(
   `;
 
   try {
-    const response = await getGeminiClient().models.generateContent({
-      model: model,
-      contents: prompt,
-      config: {
-        ...(useWebTools
-          ? {
-              tools: [{ googleSearch: {} }, { urlContext: {} }],
-              toolConfig: { includeServerSideToolInvocations: true },
-            }
-          : {}),
+    const response = await withRetry(
+      () =>
+        getGeminiClient().models.generateContent({
+          model: model,
+          contents: prompt,
+          config: {
+            abortSignal: sig,
+            ...(useWebTools
+              ? {
+                  tools: [{ googleSearch: {} }, { urlContext: {} }],
+                  toolConfig: { includeServerSideToolInvocations: true },
+                }
+              : {}),
+            maxOutputTokens: REPORT_MAX_OUTPUT_TOKENS_CHANNEL,
+          },
+        }),
+      {
+        ...GEMINI_GENERATE_RETRY,
+        signal: sig,
+        shouldRetry: (err) => isTransientGeminiError(err),
+        onRetry: (err, retryRound, delayMs) => {
+          console.warn(
+            `[Gemini channel] 일시 오류 후 재시도 ${retryRound}/${GEMINI_GENERATE_RETRY.maxAttempts - 1} (${delayMs}ms 대기)`,
+            err,
+          );
+        },
       },
-    });
+    );
 
     let text = response.text || "";
+    const finishReason = response.candidates?.[0]?.finishReason;
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const sources = chunks
       .map(chunk => chunk.web)
@@ -463,6 +593,7 @@ export async function analyzeYouTubeChannel(
 
     const extractedInsights = extractAlgorithmInsightsFromMarkdown(text);
     text = extractedInsights.text;
+    text = appendOutputTruncateNotice(text, finishReason, locale);
     const algorithmInsights = extractedInsights.algorithmInsights;
 
     const apiUsage = buildGeminiApiUsageSummary(model, response.usageMetadata);

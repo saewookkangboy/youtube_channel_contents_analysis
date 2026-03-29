@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   analyzeYouTubeChannel,
   analyzeYouTubeVideo,
@@ -35,8 +35,14 @@ import {
   Table2,
   ListChecks,
   Activity,
+  CircleX,
 } from 'lucide-react';
 import { cn } from './lib/cn';
+import {
+  analysisErrorTranslationKeyForChannel,
+  analysisErrorTranslationKeyForVideo,
+  classifyAnalysisError,
+} from './lib/analysisErrors';
 import {
   analyzeReportCompleteness,
   buildReportCompletenessAppendix,
@@ -54,14 +60,43 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
+import {
+  CHANNEL_REPORT_PREVIEW_MARKDOWN,
+  VIDEO_REPORT_PREVIEW_MARKDOWN,
+} from './dev/reportPreviewFixtures';
+
+function devReportPreviewBoot(): {
+  tab: 'channel' | 'video';
+  channelUrl: string;
+  videoUrl: string;
+  channelMd: string | null;
+  videoMd: string | null;
+} | null {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return null;
+  const p = new URLSearchParams(window.location.search).get('reportPreview');
+  if (!p) return null;
+  const channelUrl =
+    p === 'channel' || p === 'both' ? 'https://www.youtube.com/channel/UC_preview' : '';
+  const videoUrlStr =
+    p === 'video' || p === 'both' ? 'https://www.youtube.com/watch?v=preview' : '';
+  return {
+    tab: p === 'video' ? 'video' : 'channel',
+    channelUrl,
+    videoUrl: videoUrlStr,
+    channelMd: p === 'channel' || p === 'both' ? CHANNEL_REPORT_PREVIEW_MARKDOWN : null,
+    videoMd: p === 'video' || p === 'both' ? VIDEO_REPORT_PREVIEW_MARKDOWN : null,
+  };
+}
 
 export default function App() {
   const { locale, t, setLocale } = useI18n();
-  const [activeTab, setActiveTab] = useState<'channel' | 'video'>('channel');
-  
+  const [activeTab, setActiveTab] = useState<'channel' | 'video'>(
+    () => devReportPreviewBoot()?.tab ?? 'channel',
+  );
+
   // Channel State
-  const [url, setUrl] = useState('');
-  const [analysis, setAnalysis] = useState<string | null>(null);
+  const [url, setUrl] = useState(() => devReportPreviewBoot()?.channelUrl ?? '');
+  const [analysis, setAnalysis] = useState<string | null>(() => devReportPreviewBoot()?.channelMd ?? null);
   const [sources, setSources] = useState<{title?: string, uri: string}[]>([]);
   const [channelData, setChannelData] = useState<YouTubeChannelData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -69,8 +104,10 @@ export default function App() {
   const [algorithmInsights, setAlgorithmInsights] = useState<AlgorithmInsight[] | null>(null);
 
   // Video State
-  const [videoUrl, setVideoUrl] = useState('');
-  const [videoAnalysis, setVideoAnalysis] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState(() => devReportPreviewBoot()?.videoUrl ?? '');
+  const [videoAnalysis, setVideoAnalysis] = useState<string | null>(
+    () => devReportPreviewBoot()?.videoMd ?? null,
+  );
   const [videoSources, setVideoSources] = useState<{title?: string, uri: string}[]>([]);
   const [videoData, setVideoData] = useState<YouTubeVideoData | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
@@ -91,6 +128,33 @@ export default function App() {
   const [factsOnlyMode, setFactsOnlyMode] = useState(false);
   const hasYtApiKey = Boolean(import.meta.env.VITE_YOUTUBE_API_KEY);
 
+  const mountedRef = useRef(true);
+  const channelAbortRef = useRef<AbortController | null>(null);
+  const videoAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      channelAbortRef.current?.abort();
+      videoAbortRef.current?.abort();
+    };
+  }, []);
+
+  const handleCancelAnalyze = () => {
+    if (activeTab === 'channel') {
+      channelAbortRef.current?.abort();
+      channelAbortRef.current = null;
+      setLoading(false);
+      setError(null);
+    } else {
+      videoAbortRef.current?.abort();
+      videoAbortRef.current = null;
+      setVideoLoading(false);
+      setVideoError(null);
+    }
+  };
+
   const handleAnalyze = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
@@ -106,6 +170,11 @@ export default function App() {
 
     if (activeTab === 'channel') {
       if (!url) return;
+      channelAbortRef.current?.abort();
+      const ac = new AbortController();
+      channelAbortRef.current = ac;
+      const signal = ac.signal;
+
       setLoading(true);
       setError(null);
       setAnalysis(null);
@@ -117,21 +186,26 @@ export default function App() {
       try {
         let rawData: YouTubeChannelData | null = null;
         const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-        
+
         if (apiKey) {
           try {
-            rawData = await fetchYouTubeChannelData(url, apiKey);
+            rawData = await fetchYouTubeChannelData(url, apiKey, { signal });
           } catch (apiErr) {
+            if (classifyAnalysisError(apiErr) === 'aborted') throw apiErr;
             console.warn("YouTube API fetch failed, falling back to Gemini search:", apiErr);
           }
         }
 
+        if (!mountedRef.current || channelAbortRef.current !== ac) return;
         setChannelData(rawData);
         const geminiOpts: GeminiAnalysisOptions = {
           factsOnly: hasYtApiKey && factsOnlyMode,
           outputLocale: locale,
+          signal,
         };
         const result = await analyzeYouTubeChannel(url, rawData, geminiOpts);
+
+        if (!mountedRef.current || channelAbortRef.current !== ac) return;
         setAnalysis(result.text || t('resultEmpty'));
         setSources(result.sources || []);
         setAlgorithmInsights(result.algorithmInsights || null);
@@ -147,13 +221,27 @@ export default function App() {
           }));
         }
       } catch (err) {
-        setError(t('errChannelFailed'));
+        if (!mountedRef.current || channelAbortRef.current !== ac) return;
+        const kind = classifyAnalysisError(err);
+        if (kind !== 'aborted') {
+          setError(t(analysisErrorTranslationKeyForChannel(kind)));
+        } else {
+          setError(null);
+        }
         console.error(err);
       } finally {
-        setLoading(false);
+        if (channelAbortRef.current === ac) {
+          channelAbortRef.current = null;
+          if (mountedRef.current) setLoading(false);
+        }
       }
     } else {
       if (!videoUrl) return;
+      videoAbortRef.current?.abort();
+      const ac = new AbortController();
+      videoAbortRef.current = ac;
+      const signal = ac.signal;
+
       setVideoLoading(true);
       setVideoError(null);
       setVideoAnalysis(null);
@@ -165,21 +253,26 @@ export default function App() {
       try {
         let rawData: YouTubeVideoData | null = null;
         const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-        
+
         if (apiKey) {
           try {
-            rawData = await fetchYouTubeVideoData(videoUrl, apiKey);
+            rawData = await fetchYouTubeVideoData(videoUrl, apiKey, { signal });
           } catch (apiErr) {
+            if (classifyAnalysisError(apiErr) === 'aborted') throw apiErr;
             console.warn("YouTube API fetch failed, falling back to Gemini search:", apiErr);
           }
         }
 
+        if (!mountedRef.current || videoAbortRef.current !== ac) return;
         setVideoData(rawData);
         const geminiOpts: GeminiAnalysisOptions = {
           factsOnly: hasYtApiKey && factsOnlyMode,
           outputLocale: locale,
+          signal,
         };
         const result = await analyzeYouTubeVideo(videoUrl, rawData, geminiOpts);
+
+        if (!mountedRef.current || videoAbortRef.current !== ac) return;
         setVideoAnalysis(result.text || t('resultEmpty'));
         setVideoSources(result.sources || []);
         setVideoAlgorithmInsights(result.algorithmInsights || null);
@@ -195,10 +288,19 @@ export default function App() {
           }));
         }
       } catch (err) {
-        setVideoError(t('errVideoFailed'));
+        if (!mountedRef.current || videoAbortRef.current !== ac) return;
+        const kind = classifyAnalysisError(err);
+        if (kind !== 'aborted') {
+          setVideoError(t(analysisErrorTranslationKeyForVideo(kind)));
+        } else {
+          setVideoError(null);
+        }
         console.error(err);
       } finally {
-        setVideoLoading(false);
+        if (videoAbortRef.current === ac) {
+          videoAbortRef.current = null;
+          if (mountedRef.current) setVideoLoading(false);
+        }
       }
     }
   };
@@ -457,13 +559,26 @@ export default function App() {
                   className="min-h-11 w-full rounded-full border-none bg-gray-100 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-red-500"
                 />
               </div>
-              <button
-                type="submit"
-                disabled={currentLoading}
-                className="flex min-h-11 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full bg-black px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
-              >
-                {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('analyze')}
-              </button>
+              <div className="flex shrink-0 gap-2">
+                {currentLoading && (
+                  <button
+                    type="button"
+                    onClick={handleCancelAnalyze}
+                    aria-label={t('cancelAnalyze')}
+                    className="flex min-h-11 touch-manipulation items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                  >
+                    <CircleX className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="hidden sm:inline">{t('cancelAnalyze')}</span>
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={currentLoading}
+                  className="flex min-h-11 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full bg-black px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
+                >
+                  {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('analyze')}
+                </button>
+              </div>
             </div>
             {hasYtApiKey && (
               <label
@@ -525,6 +640,14 @@ export default function App() {
               <p className="mt-4 text-gray-500 font-medium animate-pulse">
                 {hasYtApiKey && factsOnlyMode ? t('loadingFacts') : t('loadingWeb')}
               </p>
+              <button
+                type="button"
+                onClick={handleCancelAnalyze}
+                className="mt-6 flex touch-manipulation items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50"
+              >
+                <CircleX className="h-4 w-4 shrink-0" aria-hidden />
+                {t('cancelAnalyze')}
+              </button>
             </motion.div>
           )}
 

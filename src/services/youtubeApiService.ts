@@ -1,3 +1,5 @@
+import { resilientFetch } from "../lib/resilience";
+
 export interface YouTubeVideoData {
   id: string;
   title: string;
@@ -10,7 +12,13 @@ export interface YouTubeVideoData {
   comments: string;
 }
 
-export async function fetchYouTubeVideoData(url: string, apiKey: string): Promise<YouTubeVideoData> {
+export type YouTubeFetchOptions = { signal?: AbortSignal };
+
+export async function fetchYouTubeVideoData(
+  url: string,
+  apiKey: string,
+  fetchOptions?: YouTubeFetchOptions,
+): Promise<YouTubeVideoData> {
   if (!apiKey) {
     throw new Error("YouTube API Key is missing.");
   }
@@ -36,7 +44,12 @@ export async function fetchYouTubeVideoData(url: string, apiKey: string): Promis
     throw new Error("Could not extract Video ID from the provided URL.");
   }
 
-  const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${apiKey}`);
+  const signal = fetchOptions?.signal;
+  const response = await resilientFetch(
+    `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${apiKey}`,
+    { signal },
+    { signal },
+  );
   if (!response.ok) throw new Error("Failed to fetch video details.");
   
   const data = await response.json();
@@ -72,11 +85,16 @@ export interface YouTubeChannelData {
   }[];
 }
 
-export async function fetchYouTubeChannelData(url: string, apiKey: string): Promise<YouTubeChannelData> {
+export async function fetchYouTubeChannelData(
+  url: string,
+  apiKey: string,
+  fetchOptions?: YouTubeFetchOptions,
+): Promise<YouTubeChannelData> {
   if (!apiKey) {
     throw new Error("YouTube API Key is missing.");
   }
 
+  const signal = fetchOptions?.signal;
   let channelId = '';
   let handle = '';
 
@@ -91,7 +109,11 @@ export async function fetchYouTubeChannelData(url: string, apiKey: string): Prom
 
   // 2. Resolve handle to Channel ID if necessary
   if (!channelId && handle) {
-    const searchRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=%40${handle}&key=${apiKey}`);
+    const searchRes = await resilientFetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=%40${handle}&key=${apiKey}`,
+      { signal },
+      { signal },
+    );
     if (!searchRes.ok) throw new Error("Failed to search for channel handle.");
     const searchData = await searchRes.json();
     if (searchData.items && searchData.items.length > 0) {
@@ -104,7 +126,11 @@ export async function fetchYouTubeChannelData(url: string, apiKey: string): Prom
   }
 
   // 3. Fetch Channel Statistics and Uploads Playlist ID
-  const channelRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics,contentDetails,snippet&id=${channelId}&key=${apiKey}`);
+  const channelRes = await resilientFetch(
+    `https://www.googleapis.com/youtube/v3/channels?part=statistics,contentDetails,snippet&id=${channelId}&key=${apiKey}`,
+    { signal },
+    { signal },
+  );
   if (!channelRes.ok) throw new Error("Failed to fetch channel details.");
   const channelData = await channelRes.json();
   
@@ -127,14 +153,22 @@ export async function fetchYouTubeChannelData(url: string, apiKey: string): Prom
 
   // 4. Fetch Recent Videos from Uploads Playlist
   if (uploadsPlaylistId) {
-    const playlistRes = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=5&key=${apiKey}`);
+    const playlistRes = await resilientFetch(
+      `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=5&key=${apiKey}`,
+      { signal },
+      { signal },
+    );
     if (playlistRes.ok) {
       const playlistData = await playlistRes.json();
       if (playlistData.items && playlistData.items.length > 0) {
         const videoIds = playlistData.items.map((item: any) => item.snippet.resourceId.videoId).join(',');
         
         // 5. Fetch Video Statistics
-        const videosRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoIds}&key=${apiKey}`);
+        const videosRes = await resilientFetch(
+          `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoIds}&key=${apiKey}`,
+          { signal },
+          { signal },
+        );
         if (videosRes.ok) {
           const videosData = await videosRes.json();
           result.recentVideos = videosData.items.map((v: any) => ({

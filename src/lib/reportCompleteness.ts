@@ -100,9 +100,14 @@ const CHANNEL_SECTIONS: SectionDef[] = [
     keys: ['쇼츠', 'shorts'],
   },
   {
+    labelKo: '15. 📣 채널 분석 — 마케터·PD 심층 인사이트',
+    labelEn: '15. 📣 Role-based channel analysis (Marketer & PD)',
+    keys: ['마케터·pd', '역할별', 'role-based channel', 'producer / pd', 'marketer'],
+  },
+  {
     labelKo: '## ✅ 우선 실행 액션 플랜 (7일)',
     labelEn: '## ✅ Priority 7-day action plan',
-    keys: ['우선 실행', '액션 플랜', '7일', 'action plan', '7-day', '7 day', 'priority'],
+    keys: ['우선 실행', '액션 플랜', '7일차', '7일', 'action plan', '7-day', '7 day'],
   },
 ];
 
@@ -148,9 +153,14 @@ const VIDEO_SECTIONS: SectionDef[] = [
     keys: ['쇼츠', 'shorts'],
   },
   {
+    labelKo: '8. 🎬 영상 분석 — 마케터·PD 심층 인사이트',
+    labelEn: '8. 🎬 Role-based video analysis (Marketer & PD)',
+    keys: ['마케터·pd', '역할별', 'role-based video', 'lesson learned', '레퍼런스'],
+  },
+  {
     labelKo: '## ✅ 우선 실행 액션 플랜 (7일)',
     labelEn: '## ✅ Priority 7-day action plan',
-    keys: ['우선 실행', '액션 플랜', '7일', 'action plan', '7-day', '7 day', 'priority'],
+    keys: ['우선 실행', '액션 플랜', '7일차', '7일', 'action plan', '7-day', '7 day'],
   },
 ];
 

@@ -94,6 +94,11 @@ function replaceBrInMarkdownSegment(segment: string): string {
     .replace(/<br\s*\/?>/gi, '  \n');
 }
 
+/** LLM이 가끔 넣는 유니코드 줄바꿈 문자 — remark 파서가 깨지지 않게 일반 개행으로 바꿈 */
+function normalizeUnicodeLineBreaks(text: string): string {
+  return text.replace(/\u2028/g, "\n").replace(/\u2029/g, "\n\n");
+}
+
 /** 모델이 삽입한 HTML br을 마크다운 하드 브레이크로 변환(펜스 코드 블록 내부는 유지) */
 function normalizeModelLineBreaks(text: string): string {
   const fence = /```[\s\S]*?```/g;
@@ -110,7 +115,7 @@ function normalizeModelLineBreaks(text: string): string {
 }
 
 export function AnalysisMarkdown({ content }: AnalysisMarkdownProps) {
-  const normalized = normalizeModelLineBreaks(content);
+  const normalized = normalizeModelLineBreaks(normalizeUnicodeLineBreaks(content));
 
   return (
     <ReactMarkdown

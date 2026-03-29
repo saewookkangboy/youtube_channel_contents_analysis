@@ -4,7 +4,9 @@
  * 단계:
  * 1. **수집(Collection)**: URL에서 채널/영상 ID를 해석하고, 선택적으로 YouTube Data API로 메타·통계를 가져온다.
  * 2. **정제(Refinement)**: 팩트를 짧은 키 JSON(FACT_PACKET)으로 압축·트렁케이트해 LLM 입력 토큰을 줄인다.
- * 3. **분석·리포트(Analysis & Report)**: Gemini가 단일 호출로 마크다운 리포트 + algorithmInsights JSON을 생성한다.
+ * 3. **분석·리포트(Analysis & Report)**: Gemini가 단일 호출로 마크다운 리포트 + algorithmInsights JSON을 생성한다. 프롬프트에서 각 본문 섹션은 `##` 제목 한 줄로 시작하도록 고정해 `reportCompleteness` 헤딩 검사와 맞춘다.
+ *
+ * **회복력(Resilience)**: YouTube·Gemini·임베딩 호출은 `resilience` 모듈의 지수 백오프+지터 재시도로 일시적 장애(429/5xx·네트워크)를 흡수한다. (Harness/SRE 스타일의 배달 안정성 원칙을 프론트 외부 API 경로에 적용.)
  *
  * 데이터 흐름:
  *   App.handleAnalyze → youtubeApiService (선택) → build*FactPacket → (선택) text-embedding-004 의미 정렬 블록 → geminiService.generateContent → UI
