@@ -4,7 +4,7 @@
 
 ## 서비스 개요
 
-- **채널 / 영상 분석**: 성장·콘텐츠·SEO·알고리즘 관점의 실행형 제안을 마크다운으로 제공합니다. 필수 섹션에는 **초기 24시간 성과 진단**, **만족도 중심 진단 카드**, **7일 액션 플랜**(일차별 `###` 소제목·4요소 불릿) 등이 포함됩니다.
+- **채널 / 영상 분석**: 성장·콘텐츠·SEO·알고리즘 관점의 실행형 제안을 마크다운으로 제공합니다. 필수 섹션에는 **초기 24시간 성과 진단**, **만족도 중심 진단 카드**, **7일 액션 플랜**(일차별 `###` 소제목·4요소 불릿) 등이 포함됩니다. 영상 리포트에는 **알고리즘·SEO 체크리스트 표**, **쇼츠 파생 아이디어**, **마케터·PD 역할별 인사이트**, 썸네일용 **이미지 생성 프롬프트(Nano Banana Pro)** 등 확장 섹션이 프롬프트에 정의되어 있습니다.
 - **UI·리포트 언어**: 인터페이스는 **한국어 / 영어** 전환(`localStorage` 유지)을 지원하고, Gemini 호출 시 **출력 로케일(`ko` / `en`)**에 맞춰 본문·헤딩·알고리즘 인사이트 JSON 라벨 언어를 맞춥니다.
 - **데이터 연동**: `VITE_YOUTUBE_API_KEY`가 있으면 API 팩트를 우선 사용합니다. **팩트 전용 모드**는 API로 raw 데이터를 확보한 경우에만 선택 가능하며, 켜면 웹 검색·URL 컨텍스트 도구를 끄고 팩트 기반 분석에 집중합니다. 키가 없거나 팩트가 없으면 자동으로 웹 도구 경로로 보완합니다.
 
@@ -14,10 +14,18 @@
 
 코드 기준 흐름은 `src/lib/analysisPipeline.ts` 주석과 동일합니다.
 
-1. **수집**: URL에서 채널/영상 ID를 해석하고, 선택적으로 YouTube Data API로 메타·통계를 가져옵니다.
+1. **수집**: URL에서 채널/영상 ID를 해석하고, 선택적으로 YouTube Data API로 메타·통계를 가져옵니다(`resilientFetch` — 일시적 HTTP 오류 대응).
 2. **정제**: 팩트를 짧은 키 JSON(**FACT_PACKET**)으로 압축·트렁케이트해 LLM 입력 토큰을 줄입니다.
-3. **(선택) 의미 정렬**: `text-embedding-004`로 제목·설명(또는 채널명·최근 제목) 간 코사인 유사도 힌트를 한 번에 계산해, 한국어 SEO 문장이 원문 주제에서 벗어나지 않도록 프롬프트에 주입합니다(`src/lib/koreanSemanticEmbedding.ts`).
-4. **분석·리포트**: Gemini 단일 호출로 마크다운 리포트 + UI용 `algorithmInsights` JSON을 생성합니다(`src/services/geminiService.ts`).
+3. **(선택) 의미 정렬**: `text-embedding-004`로 제목·설명(또는 채널명·최근 제목) 간 코사인 유사도 힌트를 한 번에 계산해, 한국어 SEO 문장이 원문 주제에서 벗어나지 않도록 프롬프트에 주입합니다(`src/lib/koreanSemanticEmbedding.ts`). 임베딩 호출에도 재시도가 적용됩니다.
+4. **분석·리포트**: Gemini **단일 호출**로 마크다운 리포트 + UI용 `algorithmInsights` JSON을 생성합니다(`src/services/geminiService.ts`). 프롬프트는 본문 섹션을 `##` 한 줄 헤딩으로 시작하도록 고정해 `reportCompleteness` 검사와 맞춥니다.
+
+**회복력**: YouTube·Gemini `generateContent`·임베딩 경로는 `src/lib/resilience.ts`의 **지수 백오프 + 지터 재시도**로 429·5xx·네트워크 등 일시적 실패를 흡수합니다. 사용자 **취소(`AbortSignal`)** 시 재시도·대기는 즉시 중단됩니다.
+
+**모델 선택(현재 코드)**  
+- **채널 분석**: `gemini-3-flash-preview`  
+- **영상 분석**: `gemini-3.1-pro-preview`  
+
+응답이 **출력 토큰 상한**에 도달하면 로케일별 안내 문구를 리포트에 덧붙여, 7일 플랜·표·JSON 블록 등이 잘렸을 수 있음을 알립니다.
 
 클라이언트 싱글톤은 `src/services/geminiClient.ts`에서 관리하며, `GEMINI_API_KEY` 미설정 시 명확한 오류를 냅니다.
 
@@ -53,7 +61,9 @@
 | **Gemini 사용량·추정 비용** | `geminiApiUsage.ts`로 토큰 메타데이터 기반 추정(모델별 단가 테이블); `GeminiUsageCard`에 마지막 요청·세션 누적을 표시합니다. |
 | **보내기** | `.md` 파일(`유튜브_채널_분석.md` / `유튜브_영상_분석.md`) 저장, 웹 페이지로 새 창 보기(`wrapReportDocumentHtml.ts`). |
 | **통계 차트** | 채널 탭에서 Recharts 기반 요약 차트(데이터가 있을 때). |
-| **분석 취소** | 진행 중인 YouTube·Gemini 요청에 `AbortSignal`을 연결하고, UI에서 취소할 수 있습니다. |
+| **마크다운 가독성** | `AnalysisMarkdown`에서 스크롤 기반 페이드 인(Motion); `prefers-reduced-motion`이면 애니메이션을 생략합니다. |
+| **분석 취소** | 진행 중인 YouTube·Gemini·임베딩 요청에 `AbortSignal`을 연결하고, UI에서 취소할 수 있습니다. |
+| **일시 오류 재시도** | `resilience.ts` — Gemini·YouTube·임베딩에 백오프 재시도(사용자 취소 제외). |
 | **오류 안내** | 429·401/403·5xx·네트워크 등을 구분해 `translations` 기반 메시지로 표시합니다(`analysisErrors.ts`). |
 
 ## 프로젝트 구조
@@ -62,9 +72,11 @@
 youtube_channel_contents_analysis/
 ├── metadata.json              # 앱 표시용 메타(이름·설명 등)
 ├── src/
-│   ├── App.tsx                # 탭·분석·팩트 모드·완성도·다운로드
+│   ├── App.tsx                # 탭·분석·팩트 모드·완성도·다운로드·취소
 │   ├── main.tsx               # I18nProvider 래핑
 │   ├── index.css
+│   ├── dev/
+│   │   └── reportPreviewFixtures.ts  # ?reportPreview=… 데모용 샘플 마크다운
 │   ├── i18n/
 │   │   ├── I18nContext.tsx
 │   │   ├── translations.ts
@@ -97,7 +109,7 @@ youtube_channel_contents_analysis/
 - **런타임 요구**: Node.js **20 이상**(`package.json` `engines`)
 - **UI**: React 19, Tailwind CSS 4, Motion, Lucide React
 - **빌드**: Vite 6
-- **AI**: `@google/genai` — 리포트 생성에 **Gemini 3.1 Pro** 등, 임베딩에 **text-embedding-004**(코드 내 상수)
+- **AI**: `@google/genai` — 채널 리포트 **Gemini 3 Flash**(`gemini-3-flash-preview`), 영상 리포트 **Gemini 3.1 Pro**(`gemini-3.1-pro-preview`), 임베딩 **text-embedding-004**
 - **콘텐츠**: `react-markdown`, `remark-gfm`
 - **차트**: Recharts
 
@@ -127,6 +139,18 @@ youtube_channel_contents_analysis/
    - `npm run build` — 프로덕션 빌드  
    - `npm run preview` — 빌드 미리보기  
    - `npm run lint` — TypeScript 검사 (`tsc --noEmit`)
+
+### UI·완성도 미리보기(개발)
+
+API 키 없이 레이아웃·`reportCompleteness`·마크다운 스타일을 보려면 개발 서버에서 쿼리 파라미터를 사용합니다.
+
+| URL 예시 | 동작 |
+| --- | --- |
+| `?reportPreview=channel` | 채널 탭에 샘플 리포트 로드 |
+| `?reportPreview=video` | 영상 탭에 샘플 리포트 로드 |
+| `?reportPreview=both` | 채널·영상 샘플을 각 탭에 로드 |
+
+샘플 본문은 `src/dev/reportPreviewFixtures.ts`에 정의되어 있으며, 예상 헤딩 구조를 맞춰 완성도 검사를 통과하도록 구성되어 있습니다.
 
 ## Vercel 배포
 
