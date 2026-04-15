@@ -1,10 +1,13 @@
 /**
- * 개발 전용: 멀티역할 오케스트레이션 힌트(선택).
- * 기본은 빈 문자열 — 필요 시 여기서 접미 프롬프트만 채우면 됨.
+ * 로컬 전용: 분석 프롬프트에 덧붙는 형식 보강(선택).
+ * 활성화 조건은 geminiService `loadDevOrchestrationPromptSuffix`와 동일.
  */
+
+import { buildDevOrchestrationStructureSuffix } from './agentOrchestrationRoles';
+
 export function getCompactOrchestrationPromptSuffix(
-  _locale: 'ko' | 'en',
-  _kind: 'channel' | 'video',
+  locale: 'ko' | 'en',
+  kind: 'channel' | 'video',
 ): string {
-  return '';
+  return buildDevOrchestrationStructureSuffix(locale, kind);
 }

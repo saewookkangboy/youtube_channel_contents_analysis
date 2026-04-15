@@ -17,7 +17,7 @@ YouTube **채널** 또는 **영상** URL을 넣으면 AI가 **실행 가능한 �
 
 - **YouTube Data API**(`VITE_YOUTUBE_API_KEY`)로 메타·통계를 가져오면 **FACT_PACKET**(짧은 키 JSON)으로 압축해 프롬프트에 넣고, 리포트 **`## 0` 팩트**에는 API 수치를 **원문 그대로** 쓰도록 요구합니다. 이후 본문의 동일 지표는 FACT_PACKET과 **반드시 일치**해야 합니다(임의 반올림·변형 금지).
 - **ANALYTICS_PACKET**: 팩트에서만 계산한 **파생 지표**(참여·좋아요·댓글률, 최근 대비 평균 조회 등)를 별도 압축 블록으로 넣어, 모델이 같은 계산을 반복하지 않도록 하고 토큰·일관성을 맞춥니다(`src/lib/dataAnalysis.ts` 등).
-- **수집 단계 병렬**: `runCollectPhaseInParallel`에서 **YouTube 팩트 fetch**와 **분석 준비**(개발 시 오케스트레이션 접미사 프리패치)를 `Promise.all`로 동시에 돌립니다. 정제 단계에서는 필요 시 **임베딩**과 **남은 dev 접미사 로드**를 또 한 번 병렬로 겹칩니다(`src/lib/analysisCollectParallel.ts`, `analysisPipeline.ts` 주석).
+- **수집 단계 병렬**: `runCollectPhaseInParallel`에서 **YouTube 팩트 fetch**와 **분석 준비**(로컬에서 켠 경우 형식 보강 접미사 프리패치)를 `Promise.all`로 동시에 돌립니다. 정제 단계에서는 필요 시 **임베딩**과 **남은 형식 보강 접미사 로드**를 또 한 번 병렬로 겹칩니다(`src/lib/analysisCollectParallel.ts`, `analysisPipeline.ts` 주석).
 - **팩트 전용 모드**(API로 raw를 확보했을 때만): 웹 검색·도구를 끄고 팩트 중심으로 쓰도록 유도합니다.
 - **이중 팩트 검증**: 메인 리포트 생성 후, 설정된 키가 있으면 **OpenAI**와 **Gemini**가 **병렬**로 주장을 점검하고, UI에 요약·리스크·플래그 항목을 보여 줍니다(기본 검증 모델은 `.env.example` 참고).
 - 모델이 쓴 **웹 근거 링크**를 모아 보여 주고, **필수 섹션·표 누락**은 완성도 힌트로 안내합니다.
@@ -30,10 +30,10 @@ YouTube **채널** 또는 **영상** URL을 넣으면 AI가 **실행 가능한 �
 - 분석 중 **취소**가 가능하고, 할당량·인증·네트워크 오류는 **구분된 안내 문구**로 표시합니다.
 - **토큰·(가능 시) 추정 비용**을 세션 단위로 확인할 수 있습니다(Gemini 기준 단가 추정은 [ai-cost-calc](https://github.com/saewookkangboy/ai-cost-calc) 스타일).
 
-### 개발 전용
+### 로컬 전용 옵션
 
-- **`VITE_DEV_AGENT_ORCHESTRATION=1`**(로컬만): 분석 프롬프트에 dev-agent-kit 스타일 **오케스트레이션 접미사**를 붙입니다(토큰 소량 추가). 프로덕션 빌드에는 해당 동적 청크가 넣어지지 않습니다.
-- 화면 우하단 **Dev Agent Kit** 패널(`import.meta.env.DEV`에서만): 오케스트레이터 역할 카드·분석 **강화학습 에피소드** 요약 등을 확인합니다.
+- **`VITE_DEV_AGENT_ORCHESTRATION=1`**(로컬만): 분석 요청에 **형식 보강 문단**을 덧붙여 목차·표·JSON 꼬리 일관성을 높입니다(토큰 소량 추가). 문구는 **최종 리포트에 그대로 인용되지 않도록** 설계되어 있으며, 프로덕션 빌드에는 해당 동적 청크가 포함되지 않습니다.
+- 화면 우하단 **로컬 작성 보조** 패널(로컬 실행에서만): 작성 순서 요약·분석 세션 통계 등을 확인합니다.
 
 ---
 
@@ -64,7 +64,7 @@ YouTube **채널** 또는 **영상** URL을 넣으면 AI가 **실행 가능한 �
 | `OPENAI_VERIFY_MODEL` / `GEMINI_VERIFY_MODEL` | 이중 팩트 검증용(선택, 미설정 시 기본값) |
 | `VITE_YOUTUBE_API_KEY` | YouTube 팩트·팩트 전용 모드(선택) |
 | `APP_URL` | 호스트 URL(선택) |
-| `VITE_DEV_AGENT_ORCHESTRATION` | `1`이면 로컬에서만 오케스트레이션 프롬프트 접미사 사용(선택) |
+| `VITE_DEV_AGENT_ORCHESTRATION` | `1`이면 로컬에서만 분석 프롬프트에 형식 보강 접미사 사용(선택) |
 | `VITE_E2E_REPORT_PREVIEW` | E2E·프리뷰 빌드에서 `?reportPreview=` 고정 마크다운 허용 시 `1`(선택) |
 
 **스크립트**: `npm run build` · `npm run preview` · `npm run lint` · `npm test`(Vitest) · `npm run test:e2e`(Playwright, 사전 `npm run test:e2e:install`)

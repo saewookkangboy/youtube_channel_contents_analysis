@@ -78,12 +78,12 @@ export interface GeminiAnalysisOptions {
   /** 분석 취소·새 분석 시작 시 이전 요청을 중단한다. */
   signal?: AbortSignal;
   /**
-   * `import.meta.env.DEV`에서만 동적 import로 초소형 멀티역할 오케스트레이션 힌트를 프롬프트에 부착.
+   * `import.meta.env.DEV`에서만 동적 import로 형식 보강 접미사를 프롬프트에 부착.
    * 프로덕션 번들에는 해당 모듈이 포함되지 않음.
    */
   devAgentOrchestration?: boolean;
   /**
-   * `runCollectPhaseInParallel` 등에서 미리 로드한 개발용 오케스트레이션 접미사.
+   * `runCollectPhaseInParallel` 등에서 미리 로드한 형식 보강 접미사.
    * 키가 있으면 리포트 단계에서 중복 로드를 하지 않는다.
    */
   prefetchedDevOrchestrationBlock?: string;
@@ -299,7 +299,7 @@ export interface VideoReportPromptParams {
   factBlock: string;
   /** API 팩트에서 계산한 파생 지표(ANALYTICS_PACKET) */
   analyticsBlock?: string;
-  /** 개발 전용 오케스트레이션 힌트 */
+  /** 로컬 전용 형식 보강 접미사 */
   devOrchestrationBlock?: string;
   semanticGroundingBlock: string;
   useWebTools: boolean;
@@ -427,6 +427,7 @@ export interface ChannelReportPromptParams {
   channelUrl: string;
   factBlock: string;
   analyticsBlock?: string;
+  /** 로컬 전용 형식 보강 접미사 */
   devOrchestrationBlock?: string;
   semanticGroundingBlock: string;
   useWebTools: boolean;

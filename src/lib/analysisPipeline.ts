@@ -2,14 +2,14 @@
  * 분석 파이프라인 (수집 → 정제 → LLM 분석·리포트)
  *
  * 단계:
- * 1. **수집(Collection)**: `runCollectPhaseInParallel`(`src/lib/analysisCollectParallel.ts`)에서 **YouTube Data API** 팩트 fetch와 **분석 준비**(개발 모드 오케스트레이션 동적 로드를 `Promise.all`로) **동시에** 진행한다. API 키가 없으면 팩트 레인은 즉시 `null`로 합류하고 준비 레인만 대기한다 — verify 단계의 OpenAI·Gemini **병렬 레인**과 동일한 병합 패턴이다.
- * 2. **정제(Refinement)**: 팩트를 짧은 키 JSON(FACT_PACKET)으로 압축·트렁케이트해 LLM 입력 토큰을 줄인다. 팩트가 있으면 **Gemini `text-embedding-004`** 의미 정렬 블록을 만든다. 프리패치된 dev 접미사가 없을 때는 임베딩 호출과 dev 접미사 로드를 **또 한 번 `Promise.all`로 병렬**한다(둘 다 Gemini 클라이언트·번들 경로를 쓰는 비독립 작업이지만 I/O 대기는 겹친다).
+ * 1. **수집(Collection)**: `runCollectPhaseInParallel`(`src/lib/analysisCollectParallel.ts`)에서 **YouTube Data API** 팩트 fetch와 **분석 준비**(로컬에서 켠 경우 형식 보강 접미사 동적 로드를 `Promise.all`로) **동시에** 진행한다. API 키가 없으면 팩트 레인은 즉시 `null`로 합류하고 준비 레인만 대기한다 — verify 단계의 OpenAI·Gemini **병렬 레인**과 동일한 병합 패턴이다.
+ * 2. **정제(Refinement)**: 팩트를 짧은 키 JSON(FACT_PACKET)으로 압축·트렁케이트해 LLM 입력 토큰을 줄인다. 팩트가 있으면 **Gemini `text-embedding-004`** 의미 정렬 블록을 만든다. 프리패치된 형식 보강 접미사가 없을 때는 임베딩 호출과 형식 보강 접미사 로드를 **또 한 번 `Promise.all`로 병렬**한다(둘 다 Gemini 클라이언트·번들 경로를 쓰는 비독립 작업이지만 I/O 대기는 겹친다).
  * 3. **분석·리포트(Analysis & Report)**: **`GEMINI_API_KEY` 우선** — 있으면 Gemini가 단일 호출로 마크다운 리포트 + algorithmInsights JSON을 생성한다. Gemini 키가 없고 **`OPENAI_API_KEY`만** 있을 때만 OpenAI로 동일 역할을 수행한다(보조·폴백). 프롬프트에서 각 본문 섹션은 `##` 제목 한 줄로 시작하도록 고정해 `reportCompleteness` 헤딩 검사와 맞춘다.
  *
  * **회복력(Resilience)**: YouTube·Gemini·임베딩 호출은 `resilience` 모듈의 지수 백오프+지터 재시도로 일시적 장애(429/5xx·네트워크)를 흡수한다. (Harness/SRE 스타일의 배달 안정성 원칙을 프론트 외부 API 경로에 적용.)
  *
  * 데이터 흐름:
- *   App.handleAnalyze → **`runCollectPhaseInParallel`**: (YouTube Data API ∥ 분석 준비) → build*FactPacket → build*AnalyticsGroundingBlock(선택) → (선택, 병렬 가능) text-embedding-004 ∥ dev 접미사 → **메인 LLM 리포트(Gemini 우선, 없으면 OpenAI)** → **verify**: `runParallelReportVerification`(키가 있으면 OPENAI·GEMINI 병렬) → UI
+ *   App.handleAnalyze → **`runCollectPhaseInParallel`**: (YouTube Data API ∥ 분석 준비) → build*FactPacket → build*AnalyticsGroundingBlock(선택) → (선택, 병렬 가능) text-embedding-004 ∥ 형식 보강 접미사 → **메인 LLM 리포트(Gemini 우선, 없으면 OpenAI)** → **verify**: `runParallelReportVerification`(키가 있으면 OPENAI·GEMINI 병렬) → UI
  *
  * 팩트 우선 모드(`GeminiAnalysisOptions.factsOnly`): API 팩트가 있을 때만 웹 검색·URL 컨텍스트 도구를 끈다.
  *

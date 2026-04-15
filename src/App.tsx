@@ -159,7 +159,7 @@ export default function App() {
     () => Boolean(import.meta.env.VITE_YOUTUBE_API_KEY),
   );
   const hasYtApiKey = Boolean(import.meta.env.VITE_YOUTUBE_API_KEY);
-  /** 개발 전용: 멀티역할 오케스트레이션 프롬프트 접미사 (프로덕션 번들에서 동적 청크 제외) */
+  /** 로컬 전용: 분석 프롬프트 형식 보강 접미사 (프로덕션 번들에서 동적 청크 제외) */
   const devAgentOrchestration =
     import.meta.env.DEV && import.meta.env.VITE_DEV_AGENT_ORCHESTRATION === '1';
 

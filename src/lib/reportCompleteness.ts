@@ -1,5 +1,10 @@
 import type { AppLocale } from '../i18n/types';
 import { translate, type TranslationKey } from '../i18n/translations';
+import {
+  CHANNEL_REPORT_SECTIONS,
+  VIDEO_REPORT_SECTIONS,
+  type ReportSectionSpec,
+} from './reportStructureContract';
 
 export type ChecklistGapId = 'optimization_item' | 'current_status' | 'improvement_actions';
 
@@ -23,146 +28,17 @@ interface SectionDef {
   keys: string[];
 }
 
-const CHANNEL_SECTIONS: SectionDef[] = [
-  {
-    labelKo: '0. 🔍 팩트 체크 및 로우 데이터',
-    labelEn: '0. 🔍 Fact check & raw data',
-    keys: ['팩트 체크', 'fact check', 'raw data', 'fact check &'],
-  },
-  {
-    labelKo: '1. 📊 채널 데이터 및 현황 분석',
-    labelEn: '1. 📊 Channel data & status',
-    keys: ['채널 데이터', '현황 분석', 'channel data', 'channel analysis', 'data analysis'],
-  },
-  {
-    labelKo: '2. 🚀 콘텐츠 성과 분석',
-    labelEn: '2. 🚀 Content performance',
-    keys: ['콘텐츠 성과', 'content performance', 'performance analysis'],
-  },
-  {
-    labelKo: '3. 💰 다각화된 수익화 전략',
-    labelEn: '3. 💰 Monetization strategy',
-    keys: ['수익화', 'monetization'],
-  },
-  {
-    labelKo: '4. 📈 구독자 증가를 위한 전략',
-    labelEn: '4. 📈 Subscriber growth',
-    keys: ['구독자 증가', 'subscriber growth', 'subscriber'],
-  },
-  {
-    labelKo: '5. 🕒 초기 24시간 성과 진단',
-    labelEn: '5. 🕒 First 24h performance',
-    keys: ['24시간', '초기 24', 'first 24', '24h', '24-hour'],
-  },
-  {
-    labelKo: '6. 🎯 만족도 중심 진단 카드',
-    labelEn: '6. 🎯 Satisfaction diagnostic card',
-    keys: ['만족도', '진단 카드', 'satisfaction', 'diagnostic card'],
-  },
-  {
-    labelKo: '7. 🤖 유튜브 알고리즘 및 SEO 최적화',
-    labelEn: '7. 🤖 Algorithm & SEO optimization',
-    keys: ['알고리즘', 'seo', 'algorithm'],
-  },
-  {
-    labelKo: '8. ✍️ 영상 제목 효율성 및 개선 제안',
-    labelEn: '8. ✍️ Title effectiveness & suggestions',
-    keys: ['영상 제목 효율성', '제목 효율성', 'title effectiveness', 'video title'],
-  },
-  {
-    labelKo: '9. 🤝 시청자 참여 및 커뮤니티 전략',
-    labelEn: '9. 🤝 Engagement & community',
-    keys: ['시청자 참여', '커뮤니티', 'engagement', 'community'],
-  },
-  {
-    labelKo: '10. ⏰ 최적의 업로드 시간 및 요일 제안',
-    labelEn: '10. ⏰ Upload schedule & timing',
-    keys: ['업로드 시간', '요일', 'upload schedule', 'publishing', 'optimal time'],
-  },
-  {
-    labelKo: '11. 💡 신규 콘텐츠 시리즈 아이디어',
-    labelEn: '11. 💡 New content series ideas',
-    keys: ['시리즈 아이디어', '콘텐츠 시리즈', 'series ideas', 'content series'],
-  },
-  {
-    labelKo: '12. 🎥 영상 및 오디오 품질 개선 제안',
-    labelEn: '12. 🎥 Video & audio quality',
-    keys: ['오디오 품질', '영상 및 오디오', 'audio quality', 'video quality'],
-  },
-  {
-    labelKo: '13. 👀 타겟 시청자 교차 시청 채널 분석',
-    labelEn: '13. 👀 Cross-viewership & audience overlap',
-    keys: ['교차 시청', '크로스', 'cross-viewership', 'cross viewership', 'audience overlap'],
-  },
-  {
-    labelKo: '14. 📱 유튜브 쇼츠',
-    labelEn: '14. 📱 YouTube Shorts',
-    keys: ['쇼츠', 'shorts'],
-  },
-  {
-    labelKo: '15. 📣 채널 분석 — 마케터·PD 심층 인사이트',
-    labelEn: '15. 📣 Role-based channel analysis (Marketer & PD)',
-    keys: ['마케터·pd', '역할별', 'role-based channel', 'producer / pd', 'marketer'],
-  },
-  {
-    labelKo: '## ✅ 우선 실행 액션 플랜 (7일)',
-    labelEn: '## ✅ Priority 7-day action plan',
-    keys: ['우선 실행', '액션 플랜', '7일차', '7일', 'action plan', '7-day', '7 day'],
-  },
-];
+function specToSectionDef(spec: ReportSectionSpec): SectionDef {
+  const strip = (line: string) => line.replace(/^##\s+/, '');
+  return {
+    labelKo: strip(spec.headingKoLine),
+    labelEn: strip(spec.headingEnLine),
+    keys: [...spec.matchKeys],
+  };
+}
 
-const VIDEO_SECTIONS: SectionDef[] = [
-  {
-    labelKo: '0. 🔍 팩트 체크 및 로우 데이터',
-    labelEn: '0. 🔍 Fact check & raw data',
-    keys: ['팩트 체크', 'fact check', 'raw data', 'fact check &'],
-  },
-  {
-    labelKo: '1. 📊 영상 상세 분석',
-    labelEn: '1. 📊 Detailed video analysis',
-    keys: ['영상 상세', 'detailed video', 'video analysis'],
-  },
-  {
-    labelKo: '2. 📝 제목 및 설명란 추천',
-    labelEn: '2. 📝 Title & description',
-    keys: ['제목 및 설명란', 'title & description', 'title and description'],
-  },
-  {
-    labelKo: '3. ✨ Nano Banana Pro 프롬프트',
-    labelEn: '3. ✨ Nano Banana Pro prompts',
-    keys: ['nano banana', 'banana pro'],
-  },
-  {
-    labelKo: '4. 🕒 초기 24시간 성과 진단',
-    labelEn: '4. 🕒 First 24h performance',
-    keys: ['24시간', '초기 24', 'first 24', '24h'],
-  },
-  {
-    labelKo: '5. 🎯 만족도 중심 진단 카드',
-    labelEn: '5. 🎯 Satisfaction diagnostic card',
-    keys: ['만족도', '진단 카드', 'satisfaction', 'diagnostic card'],
-  },
-  {
-    labelKo: '6. 🤖 알고리즘 및 SEO 최적화',
-    labelEn: '6. 🤖 Algorithm & SEO optimization',
-    keys: ['알고리즘', 'seo', 'algorithm'],
-  },
-  {
-    labelKo: '7. 📱 쇼츠 콘텐츠 전략',
-    labelEn: '7. 📱 Shorts content strategy',
-    keys: ['쇼츠', 'shorts'],
-  },
-  {
-    labelKo: '8. 🎬 영상 분석 — 마케터·PD 심층 인사이트',
-    labelEn: '8. 🎬 Role-based video analysis (Marketer & PD)',
-    keys: ['마케터·pd', '역할별', 'role-based video', 'lesson learned', '레퍼런스'],
-  },
-  {
-    labelKo: '## ✅ 우선 실행 액션 플랜 (7일)',
-    labelEn: '## ✅ Priority 7-day action plan',
-    keys: ['우선 실행', '액션 플랜', '7일차', '7일', 'action plan', '7-day', '7 day'],
-  },
-];
+const CHANNEL_SECTIONS: SectionDef[] = CHANNEL_REPORT_SECTIONS.map(specToSectionDef);
+const VIDEO_SECTIONS: SectionDef[] = VIDEO_REPORT_SECTIONS.map(specToSectionDef);
 
 function isTableSeparatorLine(line: string): boolean {
   const t = line.trim();

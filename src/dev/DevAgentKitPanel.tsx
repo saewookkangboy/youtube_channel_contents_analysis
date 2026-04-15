@@ -1,5 +1,5 @@
 /**
- * 로컬 개발 시에만 표시: dev-agent-kit 스타일 역할·강화학습 세션 요약.
+ * 로컬에서만 표시: 작성 흐름 요약·세션 통계(최종 분석 결과 본문과는 별개).
  */
 
 import React, { useMemo, useState } from 'react';
@@ -9,7 +9,11 @@ import {
   clearAnalysisEpisodes,
   getAnalysisReinforcementStats,
 } from './analysisReinforcement';
-import { ORCHESTRATOR_ROLE_CARD } from './agentOrchestrationRoles';
+import {
+  CHANNEL_STRUCTURE_SECTION_COUNT,
+  ORCHESTRATOR_ROLE_CARD,
+  VIDEO_STRUCTURE_SECTION_COUNT,
+} from './agentOrchestrationRoles';
 
 export function DevAgentKitPanel() {
   const [open, setOpen] = useState(false);
@@ -27,7 +31,7 @@ export function DevAgentKitPanel() {
       >
         <span className="flex items-center gap-2">
           <Cpu className="h-4 w-4 text-violet-400" aria-hidden />
-          Dev Agent Kit
+          로컬 작성 보조
         </span>
         {open ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
       </button>
@@ -36,9 +40,13 @@ export function DevAgentKitPanel() {
           <div>
             <p className="mb-1 flex items-center gap-1 font-bold text-violet-300">
               <Sparkles className="h-3.5 w-3.5" aria-hidden />
-              Orchestrator 역할
+              작성 순서 요약
             </p>
             <p className="leading-relaxed text-slate-400">{ORCHESTRATOR_ROLE_CARD}</p>
+            <p className="mt-2 tabular-nums text-[10px] text-slate-500">
+              권장 목차 수: 채널 {CHANNEL_STRUCTURE_SECTION_COUNT}개 · 영상 {VIDEO_STRUCTURE_SECTION_COUNT}개
+              섹션(말미 신호등 요약 포함)
+            </p>
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2">
             <p className="font-bold text-slate-300">분석 에피소드 (세션)</p>
@@ -71,8 +79,8 @@ export function DevAgentKitPanel() {
             </button>
           </div>
           <p className="text-[10px] leading-snug text-slate-600">
-            프로덕션 빌드에는 포함되지 않습니다. VITE_DEV_AGENT_ORCHESTRATION=1 일 때만 프롬프트에 오케스트레이션 힌트가
-            붙습니다.
+            이 패널과 형식 보강 문구는 로컬 실행·설정 시에만 쓰이며, 배포 빌드에는 포함되지 않습니다. 형식 보강을 켠
+            경우에도 모델에 보내는 안내는 최종 리포트에 그대로 노출되지 않도록 작성되어 있습니다.
           </p>
         </div>
       )}
