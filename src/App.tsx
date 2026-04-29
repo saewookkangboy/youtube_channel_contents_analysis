@@ -457,7 +457,6 @@ export default function App() {
   };
 
   const handleDownloadMarkdown = () => {
-    const currentAnalysis = activeTab === 'channel' ? analysis : videoAnalysis;
     if (!currentAnalysis) return;
     const completeness = analyzeReportCompleteness(analysisTab, currentAnalysis, locale);
     const appendix = buildReportCompletenessAppendix(
@@ -473,7 +472,7 @@ export default function App() {
     const urlObj = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = urlObj;
-    a.download = activeTab === 'channel' ? t('downloadFilenameChannel') : t('downloadFilenameVideo');
+    a.download = analysisTab === 'channel' ? t('downloadFilenameChannel') : t('downloadFilenameVideo');
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -792,8 +791,7 @@ export default function App() {
           ) : (
             <div className="w-full md:max-w-xl md:flex-1">
               <div className="rounded-2xl border border-violet-100 bg-violet-50/70 px-4 py-3 text-sm text-violet-800">
-                Beta 탭은 기존 분석 서비스와 분리된 실험 공간입니다. 채널/영상 탭으로 언제든 기존 기능을 그대로 사용할
-                수 있습니다.
+                {t('betaTabPlaceholder')}
               </div>
             </div>
           )}

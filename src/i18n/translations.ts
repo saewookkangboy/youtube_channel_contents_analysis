@@ -25,6 +25,8 @@ const ko = {
   koreanIntensityLow: '약',
   koreanIntensityMedium: '중',
   koreanIntensityHigh: '강',
+  betaTabPlaceholder:
+    'Beta 탭은 기존 분석 서비스와 분리된 실험 공간입니다. 채널/영상 탭으로 언제든 기존 기능을 그대로 사용할 수 있습니다.',
   emptyStateTitle: '분석을 시작하세요',
   emptyStateChannel:
     '상단에 YouTube 채널 URL을 입력하고 분석을 실행하면, 채널 성장과 시청 만족도를 함께 보는 전략 리포트가 생성됩니다.',
@@ -221,6 +223,8 @@ const en: Record<TranslationKey, string | ((n: number) => string)> = {
   koreanIntensityLow: 'Low',
   koreanIntensityMedium: 'Medium',
   koreanIntensityHigh: 'High',
+  betaTabPlaceholder:
+    'The Beta tab is an isolated experimentation space, separate from the existing analysis service. You can switch back to the Channel/Video tabs anytime and use the original features as-is.',
   emptyStateTitle: 'Start an analysis',
   emptyStateChannel:
     'Enter a YouTube channel URL above and run analysis to generate a strategy report covering growth and viewer satisfaction.',

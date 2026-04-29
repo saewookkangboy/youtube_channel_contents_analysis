@@ -189,8 +189,10 @@ export const betaAutomationMockClient: BetaAutomationClient = {
       }
       return target;
     });
+    const original = state.outreachTargets.find((t) => t.id === targetId);
     const changed = nextTargets.find((t) => t.id === targetId);
-    const stepEvent: OutreachEvent | null = changed
+    const didChange = original && changed && (original.status !== changed.status || original.currentStep !== changed.currentStep);
+    const stepEvent: OutreachEvent | null = didChange
       ? {
           id: `evt-${Date.now()}-manual-step-${changed.id}`,
           targetId: changed.id,

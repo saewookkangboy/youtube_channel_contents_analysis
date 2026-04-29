@@ -34,4 +34,26 @@ create policy "beta_automation_select_own"
   for select
   to authenticated
   using (owner_id = auth.uid());
+
+create policy "beta_automation_insert_own"
+  on public.beta_automation_states
+  for insert
+  to authenticated
+  with check (owner_id = auth.uid());
+
+create policy "beta_automation_update_own"
+  on public.beta_automation_states
+  for update
+  to authenticated
+  using (owner_id = auth.uid())
+  with check (owner_id = auth.uid());
+
+create policy "beta_automation_delete_own"
+  on public.beta_automation_states
+  for delete
+  to authenticated
+  using (owner_id = auth.uid());
+
+create index if not exists idx_beta_automation_states_owner_id
+  on public.beta_automation_states (owner_id);
 `;

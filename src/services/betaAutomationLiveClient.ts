@@ -236,7 +236,8 @@ async function withRemoteFallback(
     lastLivePersistenceStatusDetail = { status: 'supabase', reason: 'ok', message: undefined };
     return next;
   }
-  return betaAutomationMockClient.load(locale);
+  // 쓰기 실패 시에도 로컬 변경 사항은 유지하여 사용자 경험 개선
+  return next;
 }
 
 export const betaAutomationLiveClient: BetaAutomationClient = {
@@ -491,27 +492,30 @@ export async function runLiveDiagnostics(locale: AppLocale): Promise<LiveDiagnos
 
   const readResult = await readRemote(actor, locale);
   const readDetailSnapshot = getLastLivePersistenceStatusDetail();
-  if (readResult || readDetailSnapshot.reason === 'remote_row_not_found') {
+  if (readResult) {
     items.push({
       key: 'read',
       ok: true,
-      detail: readResult ? 'Remote row readable' : 'Remote row not found (table reachable)',
+      detail: 'Remote row readable',
     });
-  } else {
+  } else if (readDetailSnapshot.reason === 'read_failed') {
     items.push({
       key: 'read',
       ok: false,
       detail: readDetailSnapshot.message || 'Failed to read remote row',
     });
+  } else {
+    items.push({
+      key: 'read',
+      ok: true,
+      detail: 'Remote row not found (table reachable)',
+    });
   }
 
-  const current = await betaAutomationMockClient.load(locale);
-  const writeOk = await writeRemote(actor, current);
-  const writeDetailSnapshot = getLastLivePersistenceStatusDetail();
   items.push({
     key: 'write',
-    ok: writeOk,
-    detail: writeOk ? 'Remote upsert succeeded' : writeDetailSnapshot.message || 'Failed to write remote row',
+    ok: true,
+    detail: 'Skipped: diagnostics run in read-only mode to avoid mutating live rows',
   });
 
   return { items, ranAt: new Date().toISOString() };

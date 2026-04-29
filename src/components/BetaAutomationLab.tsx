@@ -618,18 +618,23 @@ export function BetaAutomationLab({ locale }: BetaAutomationLabProps) {
 
   useEffect(() => {
     let active = true;
-    void client.load(locale).then((state) => {
-      if (!active) return;
-      setOutreachTargets(state.outreachTargets);
-      setOutreachEvents(state.outreachEvents ?? []);
-      setReplyInput(state.replyInput);
-      setIntentResult(state.intentResult);
-      setCommitments(state.commitments);
-      const detail = getLastLivePersistenceStatusDetail();
-      setLivePersistence(detail.status);
-      setLiveReason(detail.reason);
-      setLiveReasonMessage(detail.message ?? null);
-    });
+    client.load(locale)
+      .then((state) => {
+        if (!active) return;
+        setOutreachTargets(state.outreachTargets);
+        setOutreachEvents(state.outreachEvents ?? []);
+        setReplyInput(state.replyInput);
+        setIntentResult(state.intentResult);
+        setCommitments(state.commitments);
+        const detail = getLastLivePersistenceStatusDetail();
+        setLivePersistence(detail.status);
+        setLiveReason(detail.reason);
+        setLiveReasonMessage(detail.message ?? null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error('[BetaAutomationLab] load failed:', err);
+      });
     return () => {
       active = false;
     };
@@ -817,7 +822,11 @@ export function BetaAutomationLab({ locale }: BetaAutomationLabProps) {
   const handleSignOut = async () => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('[BetaAutomationLab] signOut failed:', error);
+      return;
+    }
     setLiveAuthNotice(null);
   };
 
