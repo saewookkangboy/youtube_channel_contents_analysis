@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bot,
   CheckCircle2,
@@ -615,6 +615,14 @@ export function BetaAutomationLab({ locale }: BetaAutomationLabProps) {
   const [diagnosticsRanAt, setDiagnosticsRanAt] = useState<string | null>(null);
   const [sqlGuideOpen, setSqlGuideOpen] = useState(false);
   const [autoTickLastRunAt, setAutoTickLastRunAt] = useState<string | null>(null);
+  const latestSyncTokenRef = useRef(0);
+  const replyPersistSeqRef = useRef(0);
+  const replyPersistTimerRef = useRef<number | null>(null);
+
+  const beginSyncToken = () => {
+    latestSyncTokenRef.current += 1;
+    return latestSyncTokenRef.current;
+  };
 
   useEffect(() => {
     let active = true;
@@ -643,8 +651,9 @@ export function BetaAutomationLab({ locale }: BetaAutomationLabProps) {
   useEffect(() => {
     let active = true;
     const timer = window.setInterval(() => {
+      const token = beginSyncToken();
       void client.runOutreachAutomationPass(locale).then((next) => {
-        if (!active) return;
+        if (!active || token !== latestSyncTokenRef.current) return;
         syncState(next);
         setAutoTickLastRunAt(new Date().toISOString());
       });
@@ -654,6 +663,14 @@ export function BetaAutomationLab({ locale }: BetaAutomationLabProps) {
       window.clearInterval(timer);
     };
   }, [client, locale]);
+
+  useEffect(() => {
+    return () => {
+      if (replyPersistTimerRef.current !== null) {
+        window.clearTimeout(replyPersistTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
@@ -733,16 +750,20 @@ export function BetaAutomationLab({ locale }: BetaAutomationLabProps) {
     intentResult: IntentPrediction | null;
     commitments: PublishCommitment[];
   }>) => {
+    const token = beginSyncToken();
     setSyncing(true);
     try {
       const next = await action();
+      if (token !== latestSyncTokenRef.current) return;
       syncState(next);
       const detail = getLastLivePersistenceStatusDetail();
       setLivePersistence(detail.status);
       setLiveReason(detail.reason);
       setLiveReasonMessage(detail.message ?? null);
     } finally {
-      setSyncing(false);
+      if (token === latestSyncTokenRef.current) {
+        setSyncing(false);
+      }
     }
   };
 
@@ -775,7 +796,17 @@ export function BetaAutomationLab({ locale }: BetaAutomationLabProps) {
 
   const onChangeReply = (value: string) => {
     setReplyInput(value);
-    void client.setReplyInput(locale, value);
+    replyPersistSeqRef.current += 1;
+    const seq = replyPersistSeqRef.current;
+    if (replyPersistTimerRef.current !== null) {
+      window.clearTimeout(replyPersistTimerRef.current);
+    }
+    replyPersistTimerRef.current = window.setTimeout(() => {
+      void client.setReplyInput(locale, value).then((next) => {
+        if (seq !== replyPersistSeqRef.current) return;
+        setReplyInput(next.replyInput);
+      });
+    }, 250);
   };
 
   const runIntentClassifier = () => {

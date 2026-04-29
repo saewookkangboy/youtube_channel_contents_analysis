@@ -252,10 +252,15 @@ export const betaAutomationLiveClient: BetaAutomationClient = {
     const remote = await readRemote(actor, locale);
     if (remote) {
       const automated = runOutreachAutomation(remote);
-      if (JSON.stringify(automated) !== JSON.stringify(remote)) {
-        await writeRemote(actor, automated);
+      const requiresWriteBack = JSON.stringify(automated) !== JSON.stringify(remote);
+      if (!requiresWriteBack) {
+        lastLivePersistenceStatusDetail = { status: 'supabase', reason: 'ok', message: undefined };
+        return automated;
       }
-      lastLivePersistenceStatusDetail = { status: 'supabase', reason: 'ok', message: undefined };
+      const writeOk = await writeRemote(actor, automated);
+      if (writeOk) {
+        lastLivePersistenceStatusDetail = { status: 'supabase', reason: 'ok', message: undefined };
+      }
       return automated;
     }
     if (lastLivePersistenceStatusDetail.reason !== 'read_failed') {
