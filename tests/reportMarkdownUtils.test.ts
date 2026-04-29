@@ -3,6 +3,8 @@ import {
   appendOutputTruncateNotice,
   extractAlgorithmInsightsFromMarkdown,
   extractMarkdownH2Nav,
+  postProcessKoreanNaturalness,
+  postProcessKoreanNaturalnessWithTone,
 } from '../src/lib/reportMarkdownUtils';
 
 describe('extractMarkdownH2Nav', () => {
@@ -46,5 +48,52 @@ describe('appendOutputTruncateNotice', () => {
   it('appends English notice when truncated', () => {
     const out = appendOutputTruncateNotice('body', 'en', true);
     expect(out).toContain('Analyze');
+  });
+});
+
+describe('postProcessKoreanNaturalness', () => {
+  it('rewrites selected Korean AI-style phrases outside code fences', () => {
+    const md = [
+      '결론적으로, 이 기능은 성능 개선을 시사하는 바가 크다.',
+      '사용자는 이 기능을 통해 업무 시간을 줄일 수 있다.',
+      '',
+      '```json',
+      '{"text":"결론적으로, ~를 통해"}',
+      '```',
+    ].join('\n');
+
+    const out = postProcessKoreanNaturalness(md, 'ko');
+    expect(out).toContain('이 기능은 성능 개선의 의미가 크다.');
+    expect(out).toContain('이 기능으로 업무 시간을 줄일 수 있다.');
+    expect(out).toContain('{"text":"결론적으로, ~를 통해"}');
+  });
+
+  it('returns original markdown for English locale', () => {
+    const md = '결론적으로, A를 통해 B를 만든다.';
+    expect(postProcessKoreanNaturalness(md, 'en')).toBe(md);
+  });
+
+  it('applies formal tone when requested', () => {
+    const md = '이 기능은 빠르게 안내해요.';
+    const out = postProcessKoreanNaturalnessWithTone(md, 'ko', 'formal');
+    expect(out).toContain('안내합니다.');
+  });
+
+  it('applies casual tone when requested', () => {
+    const md = '이 기능은 빠르게 안내합니다.';
+    const out = postProcessKoreanNaturalnessWithTone(md, 'ko', 'casual');
+    expect(out).toContain('안내해요.');
+  });
+
+  it('applies low intensity conservatively', () => {
+    const md = '결론적으로, 이 기능을 통해 처리할 수 있다.';
+    const out = postProcessKoreanNaturalnessWithTone(md, 'ko', 'default', 'low');
+    expect(out).toBe(md);
+  });
+
+  it('applies high intensity aggressively', () => {
+    const md = '결론적으로, 이 기능을 통해 처리할 수 있다.';
+    const out = postProcessKoreanNaturalnessWithTone(md, 'ko', 'default', 'high');
+    expect(out).toContain('이 기능으로 처리한다.');
   });
 });

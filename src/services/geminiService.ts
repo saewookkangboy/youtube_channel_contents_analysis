@@ -14,6 +14,9 @@ import { buildGeminiApiUsageSummary, type GeminiApiUsageSummary } from "../lib/g
 import {
   appendOutputTruncateNotice,
   extractAlgorithmInsightsFromMarkdown,
+  postProcessKoreanNaturalnessWithTone,
+  type KoreanNaturalnessIntensity,
+  type KoreanNaturalnessTone,
   type AlgorithmInsight,
 } from "../lib/reportMarkdownUtils";
 import { getGeminiClient } from "./geminiClient";
@@ -87,6 +90,10 @@ export interface GeminiAnalysisOptions {
    * 키가 있으면 리포트 단계에서 중복 로드를 하지 않는다.
    */
   prefetchedDevOrchestrationBlock?: string;
+  /** 한국어 출력 후 문체 정리 톤. */
+  koreanNaturalnessTone?: KoreanNaturalnessTone;
+  /** 한국어 자연화 강도. */
+  koreanNaturalnessIntensity?: KoreanNaturalnessIntensity;
 }
 
 export async function loadDevOrchestrationPromptSuffix(
@@ -200,6 +207,20 @@ Use **"No data"** (English) instead of Korean when information is missing.
   return `
 [출력 언어 — 한국어]
 보고서 **전체**(제목·본문·표·불릿)를 **한국어**로 작성합니다. 근거가 부족하면 "데이터 없음"을 사용합니다.
+`;
+}
+
+function koreanNaturalnessStyleContract(locale: "ko" | "en"): string {
+  if (locale === "en") return "";
+  return `
+[한국어 자연화 스타일 계약 — 최종 출력물 품질]
+- 아래 원칙은 **한국어 본문 문체**에만 적용한다. 섹션 구조(##/###), 표, 체크리스트, 마지막 \`\`\`json 블록 형식은 유지한다.
+- **의미 불변**: FACT_PACKET/ANALYTICS_PACKET 수치, 고유명사, URL, 직접 인용은 바꾸지 않는다.
+- **번역투 축소**: "\`~를 통해\`", "\`~에 있어서\`", "\`~할 수 있다\`" 같은 기계적 표현은 가능한 자연어로 간결하게 바꾼다.
+- **AI 관용구 절제**: "\`결론적으로\`", "\`시사하는 바가 크다\`", "\`주목할 만하다\`" 같은 상투 표현을 반복하지 않는다.
+- **리듬 다양화**: 문장 길이와 종결어미를 단조롭게 반복하지 말고, 문단마다 호흡을 조절한다.
+- **과한 장식 금지**: 과도한 볼드/따옴표/이모지/불릿 남발을 피하고, 필요한 정보만 명확히 전달한다.
+- **실행 문장 우선**: 추상적인 미사여구 대신 바로 실행 가능한 문장(예시 카피, 편집 포인트, 측정 지표)을 우선한다.
 `;
 }
 
@@ -339,9 +360,11 @@ export function buildVideoAnalysisPrompt(p: VideoReportPromptParams): string {
   const hasFactPacket = Boolean(factBlock?.includes("[FACT_PACKET|"));
   const hasAnalyticsPacket = Boolean(analyticsBlock?.includes("[ANALYTICS_PACKET|"));
   const factContract = buildFactGroundingContractBlock(locale, "video", hasFactPacket, hasAnalyticsPacket);
+  const koreanNaturalnessContract = koreanNaturalnessStyleContract(locale);
 
   return `
     ${outputLanguageBlock(locale)}
+    ${koreanNaturalnessContract}
     ${videoRoleIntro}
     ${openAiExtra}
     URL: ${videoUrl}
@@ -467,9 +490,11 @@ export function buildChannelAnalysisPrompt(p: ChannelReportPromptParams): string
   const hasFactPacket = Boolean(factBlock?.includes("[FACT_PACKET|"));
   const hasAnalyticsPacket = Boolean(analyticsBlock?.includes("[ANALYTICS_PACKET|"));
   const factContract = buildFactGroundingContractBlock(locale, "channel", hasFactPacket, hasAnalyticsPacket);
+  const koreanNaturalnessContract = koreanNaturalnessStyleContract(locale);
 
   return `
     ${outputLanguageBlock(locale)}
+    ${koreanNaturalnessContract}
     ${channelTaskIntro}
     ${openAiExtra}
     ${factBlock ? `${factBlock}\n` : ""}
@@ -665,6 +690,12 @@ export async function analyzeYouTubeVideo(
     text = extractedInsights.text;
     const truncated = finishReason === FinishReason.MAX_TOKENS;
     text = appendOutputTruncateNotice(text, locale, truncated);
+    text = postProcessKoreanNaturalnessWithTone(
+      text,
+      locale,
+      options?.koreanNaturalnessTone ?? "default",
+      options?.koreanNaturalnessIntensity ?? "medium",
+    );
     const algorithmInsights = extractedInsights.algorithmInsights;
 
     const apiUsage = buildGeminiApiUsageSummary(model, response.usageMetadata);
@@ -760,6 +791,12 @@ export async function analyzeYouTubeChannel(
     text = extractedInsights.text;
     const truncated = finishReason === FinishReason.MAX_TOKENS;
     text = appendOutputTruncateNotice(text, locale, truncated);
+    text = postProcessKoreanNaturalnessWithTone(
+      text,
+      locale,
+      options?.koreanNaturalnessTone ?? "default",
+      options?.koreanNaturalnessIntensity ?? "medium",
+    );
     const algorithmInsights = extractedInsights.algorithmInsights;
 
     const apiUsage = buildGeminiApiUsageSummary(model, response.usageMetadata);

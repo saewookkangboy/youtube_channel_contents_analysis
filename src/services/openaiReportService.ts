@@ -9,6 +9,7 @@ import { isTransientOpenAIError, withRetry } from '../lib/resilience';
 import {
   appendOutputTruncateNotice,
   extractAlgorithmInsightsFromMarkdown,
+  postProcessKoreanNaturalnessWithTone,
 } from '../lib/reportMarkdownUtils';
 import {
   buildChannelAnalysisPrompt,
@@ -129,6 +130,12 @@ export async function analyzeYouTubeVideoWithOpenAI(
   const extracted = extractAlgorithmInsightsFromMarkdown(text);
   text = extracted.text;
   text = appendOutputTruncateNotice(text, locale, finishReason === 'length');
+  text = postProcessKoreanNaturalnessWithTone(
+    text,
+    locale,
+    options?.koreanNaturalnessTone ?? 'default',
+    options?.koreanNaturalnessIntensity ?? 'medium',
+  );
 
   return {
     text,
@@ -210,6 +217,12 @@ export async function analyzeYouTubeChannelWithOpenAI(
   const extracted = extractAlgorithmInsightsFromMarkdown(text);
   text = extracted.text;
   text = appendOutputTruncateNotice(text, locale, finishReason === 'length');
+  text = postProcessKoreanNaturalnessWithTone(
+    text,
+    locale,
+    options?.koreanNaturalnessTone ?? 'default',
+    options?.koreanNaturalnessIntensity ?? 'medium',
+  );
 
   return {
     text,
