@@ -17,6 +17,16 @@ const ko = {
     '(API로 가져온 수치가 있을 때만 웹 검색·URL 도구 끄기 — 토큰·비용 절감)',
   factsOnlyTooltip:
     'YouTube Data API로 메타데이터를 가져온 경우에만 웹 도구를 끕니다. API 호출이 실패하면 자동으로 검색·URL 컨텍스트로 보완합니다.',
+  koreanToneTitle: '한국어 톤',
+  koreanToneDefault: '기본',
+  koreanToneFormal: '단정',
+  koreanToneCasual: '캐주얼',
+  koreanIntensityTitle: '윤문 강도',
+  koreanIntensityLow: '약',
+  koreanIntensityMedium: '중',
+  koreanIntensityHigh: '강',
+  betaTabPlaceholder:
+    'Beta 탭은 기존 분석 서비스와 분리된 실험 공간입니다. 채널/영상 탭으로 언제든 기존 기능을 그대로 사용할 수 있습니다.',
   emptyStateTitle: '분석을 시작하세요',
   emptyStateChannel:
     '상단에 YouTube 채널 URL을 입력하고 분석을 실행하면, 채널 성장과 시청 만족도를 함께 보는 전략 리포트가 생성됩니다.',
@@ -205,6 +215,16 @@ const en: Record<TranslationKey, string | ((n: number) => string)> = {
     '(When API metrics are available, disable web search & URL tools — saves tokens and cost)',
   factsOnlyTooltip:
     'Web tools are disabled only when metadata was fetched via YouTube Data API. If the API call fails, search and URL context are used automatically.',
+  koreanToneTitle: 'Korean tone',
+  koreanToneDefault: 'Default',
+  koreanToneFormal: 'Formal',
+  koreanToneCasual: 'Casual',
+  koreanIntensityTitle: 'Polish intensity',
+  koreanIntensityLow: 'Low',
+  koreanIntensityMedium: 'Medium',
+  koreanIntensityHigh: 'High',
+  betaTabPlaceholder:
+    'The Beta tab is an isolated experimentation space, separate from the existing analysis service. You can switch back to the Channel/Video tabs anytime and use the original features as-is.',
   emptyStateTitle: 'Start an analysis',
   emptyStateChannel:
     'Enter a YouTube channel URL above and run analysis to generate a strategy report covering growth and viewer satisfaction.',

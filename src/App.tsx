@@ -32,6 +32,7 @@ import {
 import { AnalysisMarkdown } from './components/AnalysisMarkdown';
 import { ReportVerificationPanel } from './components/ReportVerificationPanel';
 import { GeminiUsageCard } from './components/GeminiUsageCard';
+import { BetaAutomationLab } from './components/BetaAutomationLab';
 import type { GeminiApiUsageSummary } from './lib/geminiApiUsage';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -48,12 +49,14 @@ import {
   Globe,
   Video,
   LayoutDashboard,
+  FlaskConical,
   AlertTriangle,
   RefreshCw,
   Table2,
   ListChecks,
   Activity,
   CircleX,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { cn } from './lib/cn';
 import {
@@ -90,6 +93,10 @@ import {
   CHANNEL_REPORT_PREVIEW_MARKDOWN,
   VIDEO_REPORT_PREVIEW_MARKDOWN,
 } from './dev/reportPreviewFixtures';
+import type {
+  KoreanNaturalnessIntensity,
+  KoreanNaturalnessTone,
+} from './lib/reportMarkdownUtils';
 
 function devReportPreviewBoot(): {
   tab: 'channel' | 'video';
@@ -116,11 +123,21 @@ function devReportPreviewBoot(): {
   };
 }
 
+function initialActiveTab(): 'channel' | 'video' | 'beta' {
+  if (typeof window !== 'undefined') {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab === 'beta') return 'beta';
+  }
+  return devReportPreviewBoot()?.tab ?? 'channel';
+}
+
 export default function App() {
   const { locale, t, setLocale } = useI18n();
-  const [activeTab, setActiveTab] = useState<'channel' | 'video'>(
-    () => devReportPreviewBoot()?.tab ?? 'channel',
+  const [activeTab, setActiveTab] = useState<'channel' | 'video' | 'beta'>(
+    () => initialActiveTab(),
   );
+  const isAnalysisTab = activeTab === 'channel' || activeTab === 'video';
+  const analysisTab: 'channel' | 'video' = activeTab === 'video' ? 'video' : 'channel';
 
   // Channel State
   const [url, setUrl] = useState(() => devReportPreviewBoot()?.channelUrl ?? '');
@@ -158,6 +175,10 @@ export default function App() {
   const [factsOnlyMode, setFactsOnlyMode] = useState(
     () => Boolean(import.meta.env.VITE_YOUTUBE_API_KEY),
   );
+  const [koreanNaturalnessTone, setKoreanNaturalnessTone] =
+    useState<KoreanNaturalnessTone>('default');
+  const [koreanNaturalnessIntensity, setKoreanNaturalnessIntensity] =
+    useState<KoreanNaturalnessIntensity>('medium');
   const hasYtApiKey = Boolean(import.meta.env.VITE_YOUTUBE_API_KEY);
   /** 로컬 전용: 분석 프롬프트 형식 보강 접미사 (프로덕션 번들에서 동적 청크 제외) */
   const devAgentOrchestration =
@@ -181,7 +202,7 @@ export default function App() {
   }, []);
 
   const handleCancelAnalyze = () => {
-    if (activeTab === 'channel') {
+    if (analysisTab === 'channel') {
       channelAbortRef.current?.abort();
       channelAbortRef.current = null;
       setLoading(false);
@@ -196,6 +217,7 @@ export default function App() {
 
   const handleAnalyze = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!isAnalysisTab) return;
 
     const useOpenAi = useOpenAiForMainReport();
     if (!isAnyMainReportLlmKeyConfigured()) {
@@ -208,7 +230,7 @@ export default function App() {
       return;
     }
 
-    if (activeTab === 'channel') {
+    if (analysisTab === 'channel') {
       if (!url) return;
       channelAbortRef.current?.abort();
       const ac = new AbortController();
@@ -245,6 +267,8 @@ export default function App() {
           signal,
           devAgentOrchestration,
           prefetchedDevOrchestrationBlock,
+          koreanNaturalnessTone,
+          koreanNaturalnessIntensity,
         };
         const result = useOpenAi
           ? await analyzeYouTubeChannelWithOpenAI(url, rawData, geminiOpts)
@@ -355,6 +379,8 @@ export default function App() {
           signal,
           devAgentOrchestration,
           prefetchedDevOrchestrationBlock,
+          koreanNaturalnessTone,
+          koreanNaturalnessIntensity,
         };
         const result = useOpenAi
           ? await analyzeYouTubeVideoWithOpenAI(videoUrl, rawData, geminiOpts)
@@ -432,9 +458,8 @@ export default function App() {
   };
 
   const handleDownloadMarkdown = () => {
-    const currentAnalysis = activeTab === 'channel' ? analysis : videoAnalysis;
     if (!currentAnalysis) return;
-    const completeness = analyzeReportCompleteness(activeTab, currentAnalysis, locale);
+    const completeness = analyzeReportCompleteness(analysisTab, currentAnalysis, locale);
     const appendix = buildReportCompletenessAppendix(
       completeness.missingLabels,
       {
@@ -448,7 +473,7 @@ export default function App() {
     const urlObj = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = urlObj;
-    a.download = activeTab === 'channel' ? t('downloadFilenameChannel') : t('downloadFilenameVideo');
+    a.download = analysisTab === 'channel' ? t('downloadFilenameChannel') : t('downloadFilenameVideo');
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -473,21 +498,21 @@ export default function App() {
     }
   };
 
-  const currentAnalysis = activeTab === 'channel' ? analysis : videoAnalysis;
-  const currentVerify = activeTab === 'channel' ? channelVerify : videoVerify;
-  const currentLoading = activeTab === 'channel' ? loading : videoLoading;
-  const currentError = activeTab === 'channel' ? error : videoError;
-  const currentSources = activeTab === 'channel' ? sources : videoSources;
-  const currentUrl = activeTab === 'channel' ? url : videoUrl;
-  const currentAlgorithmInsights = activeTab === 'channel' ? algorithmInsights : videoAlgorithmInsights;
-  const currentApiUsage = activeTab === 'channel' ? channelApiUsage : videoApiUsage;
+  const currentAnalysis = analysisTab === 'channel' ? analysis : videoAnalysis;
+  const currentVerify = analysisTab === 'channel' ? channelVerify : videoVerify;
+  const currentLoading = analysisTab === 'channel' ? loading : videoLoading;
+  const currentError = analysisTab === 'channel' ? error : videoError;
+  const currentSources = analysisTab === 'channel' ? sources : videoSources;
+  const currentUrl = analysisTab === 'channel' ? url : videoUrl;
+  const currentAlgorithmInsights = analysisTab === 'channel' ? algorithmInsights : videoAlgorithmInsights;
+  const currentApiUsage = analysisTab === 'channel' ? channelApiUsage : videoApiUsage;
 
   const reportCompleteness = useMemo(() => {
     if (!currentAnalysis) {
       return null;
     }
-    return analyzeReportCompleteness(activeTab, currentAnalysis, locale);
-  }, [activeTab, currentAnalysis, locale]);
+    return analyzeReportCompleteness(analysisTab, currentAnalysis, locale);
+  }, [analysisTab, currentAnalysis, locale]);
 
   /** 조회 대비 참여·반응 비율 및 채널 맥락 지표 (API 데이터가 있을 때만 수치 표시) */
   const operationalKpi = useMemo(() => {
@@ -501,7 +526,7 @@ export default function App() {
     const rateBar = (pct: number | null) =>
       pct === null || Number.isNaN(pct) ? 0 : Math.min(100, pct * 10);
 
-    if (activeTab === 'video' && videoData) {
+    if (analysisTab === 'video' && videoData) {
       const views = parseStatInt(videoData.views);
       const likes = parseStatInt(videoData.likes);
       const comments = parseStatInt(videoData.comments);
@@ -523,7 +548,7 @@ export default function App() {
       };
     }
 
-    if (activeTab === 'channel' && channelData && channelData.recentVideos.length > 0) {
+    if (analysisTab === 'channel' && channelData && channelData.recentVideos.length > 0) {
       const { recentVideos } = channelData;
       const agg = aggregateRecentVideosStats(recentVideos);
       const er = computeEngagementRates(agg.views, agg.likes, agg.comments);
@@ -577,9 +602,10 @@ export default function App() {
       rows: [] as { key: string; label: string; hint: string; value: string; barFill: number }[],
       footnote: t('kpiFootnoteNeedApi'),
     };
-  }, [activeTab, videoData, channelData, locale, t]);
+  }, [analysisTab, videoData, channelData, locale, t]);
 
   const [compactChart, setCompactChart] = useState(false);
+  const [showMobileHeaderOptions, setShowMobileHeaderOptions] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 639px)');
     const onChange = () => setCompactChart(mq.matches);
@@ -588,17 +614,27 @@ export default function App() {
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
+  useEffect(() => {
+    if (!isAnalysisTab) {
+      setShowMobileHeaderOptions(false);
+    }
+  }, [isAnalysisTab]);
+
   return (
     <div className="min-h-screen bg-[#F5F5F5] text-[#1A1A1A] font-sans selection:bg-orange-200">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-md sm:px-6 sm:py-4">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-4">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 md:shrink-0">
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="shrink-0 rounded-lg bg-red-600 p-2">
-                <Youtube className="h-6 w-6 text-white" />
+      <header className="sticky top-0 z-50 border-b border-gray-200/90 bg-white/92 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-md sm:px-6 sm:pb-4 sm:pt-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="shrink-0 rounded-xl bg-red-600 p-2">
+                <Youtube className="h-5 w-5 text-white sm:h-6 sm:w-6" />
               </div>
-              <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-xl">{t('brandTitle')}</h1>
+              <div className="min-w-0">
+                <h1 className="truncate text-base font-bold tracking-tight text-gray-900 sm:text-xl">
+                  {t('brandTitle')}
+                </h1>
+              </div>
             </div>
             <div
               className="flex shrink-0 items-center gap-0.5 rounded-full border border-gray-200 bg-white p-0.5 shadow-sm"
@@ -628,13 +664,13 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex justify-center md:justify-start">
-            <div className="inline-flex w-full max-w-md rounded-full bg-gray-100 p-1 sm:w-auto">
+          <div className="overflow-x-auto">
+            <div className="inline-flex min-w-full rounded-2xl bg-gray-100 p-1 sm:min-w-0 sm:rounded-full">
               <button
                 type="button"
                 onClick={() => setActiveTab('channel')}
                 className={cn(
-                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition-all sm:flex-initial sm:px-4',
+                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:rounded-full',
                   activeTab === 'channel'
                     ? 'bg-white text-black shadow-sm'
                     : 'text-gray-500 hover:text-black',
@@ -647,7 +683,7 @@ export default function App() {
                 type="button"
                 onClick={() => setActiveTab('video')}
                 className={cn(
-                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition-all sm:flex-initial sm:px-4',
+                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:rounded-full',
                   activeTab === 'video'
                     ? 'bg-white text-black shadow-sm'
                     : 'text-gray-500 hover:text-black',
@@ -656,74 +692,147 @@ export default function App() {
                 <Video className="h-4 w-4 shrink-0" />
                 <span>{t('tabVideo')}</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('beta')}
+                className={cn(
+                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:rounded-full',
+                  activeTab === 'beta'
+                    ? 'bg-white text-black shadow-sm'
+                    : 'text-gray-500 hover:text-black',
+                )}
+              >
+                <FlaskConical className="h-4 w-4 shrink-0" />
+                <span>Beta</span>
+              </button>
             </div>
           </div>
 
-          <form
-            onSubmit={handleAnalyze}
-            className="flex w-full flex-col gap-2 md:max-w-xl md:flex-1 md:gap-2"
-          >
-            <div className="flex w-full flex-col gap-2 md:flex-row md:items-stretch md:gap-2">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  enterKeyHint="search"
-                  autoComplete="url"
-                  inputMode="url"
-                  value={currentUrl}
-                  onChange={(e) =>
-                    activeTab === 'channel' ? setUrl(e.target.value) : setVideoUrl(e.target.value)
-                  }
-                  placeholder={
-                    activeTab === 'channel' ? t('placeholderChannel') : t('placeholderVideo')
-                  }
-                  className="min-h-11 w-full rounded-full border-none bg-gray-100 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-red-500"
-                />
-              </div>
-              <div className="flex shrink-0 gap-2">
-                {currentLoading && (
+          {isAnalysisTab ? (
+            <form
+              onSubmit={handleAnalyze}
+              className="flex w-full flex-col gap-2.5 rounded-2xl border border-gray-200/80 bg-white/90 p-2.5 sm:gap-3 sm:p-3"
+            >
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-stretch">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    enterKeyHint="search"
+                    autoComplete="url"
+                    inputMode="url"
+                    value={currentUrl}
+                    onChange={(e) =>
+                      analysisTab === 'channel' ? setUrl(e.target.value) : setVideoUrl(e.target.value)
+                    }
+                    placeholder={
+                      analysisTab === 'channel' ? t('placeholderChannel') : t('placeholderVideo')
+                    }
+                    className="min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-red-200 focus:bg-white focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {currentLoading && (
+                    <button
+                      type="button"
+                      onClick={handleCancelAnalyze}
+                      aria-label={t('cancelAnalyze')}
+                      className="flex min-h-11 touch-manipulation items-center justify-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                    >
+                      <CircleX className="h-4 w-4 shrink-0" aria-hidden />
+                      <span className="hidden sm:inline">{t('cancelAnalyze')}</span>
+                    </button>
+                  )}
                   <button
-                    type="button"
-                    onClick={handleCancelAnalyze}
-                    aria-label={t('cancelAnalyze')}
-                    className="flex min-h-11 touch-manipulation items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                    type="submit"
+                    disabled={currentLoading}
+                    className="flex min-h-11 flex-1 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-xl bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-6"
                   >
-                    <CircleX className="h-4 w-4 shrink-0" aria-hidden />
-                    <span className="hidden sm:inline">{t('cancelAnalyze')}</span>
+                    {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('analyze')}
                   </button>
-                )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between sm:hidden">
+                <p className="text-[11px] font-medium text-gray-500">{t('deepAnalysisPipelineNote')}</p>
                 <button
-                  type="submit"
-                  disabled={currentLoading}
-                  className="flex min-h-11 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full bg-black px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
+                  type="button"
+                  onClick={() => setShowMobileHeaderOptions((prev) => !prev)}
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700"
                 >
-                  {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('analyze')}
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  {showMobileHeaderOptions
+                    ? locale === 'en'
+                      ? 'Hide options'
+                      : '옵션 숨기기'
+                    : locale === 'en'
+                      ? 'Options'
+                      : '옵션'}
                 </button>
               </div>
+
+              <div className={cn('space-y-2.5', !showMobileHeaderOptions && 'hidden sm:block')}>
+                {hasYtApiKey && (
+                  <label
+                    className="flex cursor-pointer items-start gap-2.5 px-1 text-left text-xs leading-snug text-gray-600 md:items-center"
+                    title={t('factsOnlyTooltip')}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-red-600 focus:ring-red-500 md:mt-0"
+                      checked={factsOnlyMode}
+                      onChange={(e) => setFactsOnlyMode(e.target.checked)}
+                    />
+                    <span>
+                      <span className="font-medium text-gray-700">{t('factsOnlyTitle')}</span>
+                      <span className="text-gray-500"> {t('factsOnlyHint')}</span>
+                    </span>
+                  </label>
+                )}
+                {locale === 'ko' && (
+                  <div className="flex flex-col gap-2 px-1 text-xs text-gray-600 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+                    <label className="flex items-center gap-2">
+                      <span className="font-medium text-gray-700">{t('koreanToneTitle')}</span>
+                      <select
+                        value={koreanNaturalnessTone}
+                        onChange={(e) => setKoreanNaturalnessTone(e.target.value as KoreanNaturalnessTone)}
+                        className="min-h-9 rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:ring-2 focus:ring-red-500"
+                      >
+                        <option value="default">{t('koreanToneDefault')}</option>
+                        <option value="formal">{t('koreanToneFormal')}</option>
+                        <option value="casual">{t('koreanToneCasual')}</option>
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <span className="font-medium text-gray-700">{t('koreanIntensityTitle')}</span>
+                      <select
+                        value={koreanNaturalnessIntensity}
+                        onChange={(e) =>
+                          setKoreanNaturalnessIntensity(e.target.value as KoreanNaturalnessIntensity)
+                        }
+                        className="min-h-9 rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:ring-2 focus:ring-red-500"
+                      >
+                        <option value="low">{t('koreanIntensityLow')}</option>
+                        <option value="medium">{t('koreanIntensityMedium')}</option>
+                        <option value="high">{t('koreanIntensityHigh')}</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </form>
+          ) : (
+            <div className="rounded-2xl border border-violet-100 bg-violet-50/70 px-4 py-3 text-sm text-violet-800">
+              {t('betaTabPlaceholder')}
             </div>
-            {hasYtApiKey && (
-              <label
-                className="flex cursor-pointer items-start gap-2.5 px-1 text-left text-xs leading-snug text-gray-600 md:items-center"
-                title={t('factsOnlyTooltip')}
-              >
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-red-600 focus:ring-red-500 md:mt-0"
-                  checked={factsOnlyMode}
-                  onChange={(e) => setFactsOnlyMode(e.target.checked)}
-                />
-                <span>
-                  <span className="font-medium text-gray-700">{t('factsOnlyTitle')}</span>
-                  <span className="text-gray-500"> {t('factsOnlyHint')}</span>
-                </span>
-              </label>
-            )}
-          </form>
+          )}
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+        {!isAnalysisTab ? (
+          <BetaAutomationLab locale={locale} />
+        ) : (
         <AnimatePresence mode="wait">
           {!currentAnalysis && !currentLoading && !currentError && (
             <motion.div 
@@ -798,7 +907,7 @@ export default function App() {
             >
               {/* Sidebar Stats / Info */}
               <div className="min-w-0 space-y-6 lg:col-span-1">
-                {activeTab === 'channel' ? (
+                  {analysisTab === 'channel' ? (
                   <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
                     <h3 className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400">
                       <BarChart3 className="h-4 w-4 shrink-0" /> {t('sidebarChannelMetrics')}
@@ -984,7 +1093,7 @@ export default function App() {
 
               {/* Main Analysis Content */}
               <div className="min-w-0 space-y-6 lg:col-span-2">
-                {activeTab === 'channel' && channelData && channelData.recentVideos.length > 0 && (
+                {analysisTab === 'channel' && channelData && channelData.recentVideos.length > 0 && (
                   <div className="rounded-[2rem] border border-gray-100 bg-white p-5 shadow-sm sm:p-8 md:p-12">
                     <div className="mb-6 flex items-center gap-3 sm:mb-8">
                       <div className="rounded-2xl bg-red-100 p-3">
@@ -1257,6 +1366,7 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        )}
       </main>
 
       <footer className="mt-8 border-t border-gray-100 pb-[max(1rem,env(safe-area-inset-bottom))]">
