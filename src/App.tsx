@@ -56,6 +56,7 @@ import {
   ListChecks,
   Activity,
   CircleX,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { cn } from './lib/cn';
 import {
@@ -604,6 +605,7 @@ export default function App() {
   }, [analysisTab, videoData, channelData, locale, t]);
 
   const [compactChart, setCompactChart] = useState(false);
+  const [showMobileHeaderOptions, setShowMobileHeaderOptions] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 639px)');
     const onChange = () => setCompactChart(mq.matches);
@@ -612,17 +614,27 @@ export default function App() {
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
+  useEffect(() => {
+    if (!isAnalysisTab) {
+      setShowMobileHeaderOptions(false);
+    }
+  }, [isAnalysisTab]);
+
   return (
     <div className="min-h-screen bg-[#F5F5F5] text-[#1A1A1A] font-sans selection:bg-orange-200">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-md sm:px-6 sm:py-4">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-4">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 md:shrink-0">
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="shrink-0 rounded-lg bg-red-600 p-2">
-                <Youtube className="h-6 w-6 text-white" />
+      <header className="sticky top-0 z-50 border-b border-gray-200/90 bg-white/92 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-md sm:px-6 sm:pb-4 sm:pt-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="shrink-0 rounded-xl bg-red-600 p-2">
+                <Youtube className="h-5 w-5 text-white sm:h-6 sm:w-6" />
               </div>
-              <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-xl">{t('brandTitle')}</h1>
+              <div className="min-w-0">
+                <h1 className="truncate text-base font-bold tracking-tight text-gray-900 sm:text-xl">
+                  {t('brandTitle')}
+                </h1>
+              </div>
             </div>
             <div
               className="flex shrink-0 items-center gap-0.5 rounded-full border border-gray-200 bg-white p-0.5 shadow-sm"
@@ -652,13 +664,13 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex justify-center md:justify-start">
-            <div className="inline-flex w-full max-w-md rounded-full bg-gray-100 p-1 sm:w-auto">
+          <div className="overflow-x-auto">
+            <div className="inline-flex min-w-full rounded-2xl bg-gray-100 p-1 sm:min-w-0 sm:rounded-full">
               <button
                 type="button"
                 onClick={() => setActiveTab('channel')}
                 className={cn(
-                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition-all sm:flex-initial sm:px-4',
+                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:rounded-full',
                   activeTab === 'channel'
                     ? 'bg-white text-black shadow-sm'
                     : 'text-gray-500 hover:text-black',
@@ -671,7 +683,7 @@ export default function App() {
                 type="button"
                 onClick={() => setActiveTab('video')}
                 className={cn(
-                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition-all sm:flex-initial sm:px-4',
+                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:rounded-full',
                   activeTab === 'video'
                     ? 'bg-white text-black shadow-sm'
                     : 'text-gray-500 hover:text-black',
@@ -684,7 +696,7 @@ export default function App() {
                 type="button"
                 onClick={() => setActiveTab('beta')}
                 className={cn(
-                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium transition-all sm:flex-initial sm:px-4',
+                  'flex min-h-11 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:rounded-full',
                   activeTab === 'beta'
                     ? 'bg-white text-black shadow-sm'
                     : 'text-gray-500 hover:text-black',
@@ -699,100 +711,119 @@ export default function App() {
           {isAnalysisTab ? (
             <form
               onSubmit={handleAnalyze}
-              className="flex w-full flex-col gap-2 md:max-w-xl md:flex-1 md:gap-2"
+              className="flex w-full flex-col gap-2.5 rounded-2xl border border-gray-200/80 bg-white/90 p-2.5 sm:gap-3 sm:p-3"
             >
-            <div className="flex w-full flex-col gap-2 md:flex-row md:items-stretch md:gap-2">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  enterKeyHint="search"
-                  autoComplete="url"
-                  inputMode="url"
-                  value={currentUrl}
-                  onChange={(e) =>
-                    analysisTab === 'channel' ? setUrl(e.target.value) : setVideoUrl(e.target.value)
-                  }
-                  placeholder={
-                    analysisTab === 'channel' ? t('placeholderChannel') : t('placeholderVideo')
-                  }
-                  className="min-h-11 w-full rounded-full border-none bg-gray-100 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-red-500"
-                />
-              </div>
-              <div className="flex shrink-0 gap-2">
-                {currentLoading && (
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-stretch">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    enterKeyHint="search"
+                    autoComplete="url"
+                    inputMode="url"
+                    value={currentUrl}
+                    onChange={(e) =>
+                      analysisTab === 'channel' ? setUrl(e.target.value) : setVideoUrl(e.target.value)
+                    }
+                    placeholder={
+                      analysisTab === 'channel' ? t('placeholderChannel') : t('placeholderVideo')
+                    }
+                    className="min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-red-200 focus:bg-white focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {currentLoading && (
+                    <button
+                      type="button"
+                      onClick={handleCancelAnalyze}
+                      aria-label={t('cancelAnalyze')}
+                      className="flex min-h-11 touch-manipulation items-center justify-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                    >
+                      <CircleX className="h-4 w-4 shrink-0" aria-hidden />
+                      <span className="hidden sm:inline">{t('cancelAnalyze')}</span>
+                    </button>
+                  )}
                   <button
-                    type="button"
-                    onClick={handleCancelAnalyze}
-                    aria-label={t('cancelAnalyze')}
-                    className="flex min-h-11 touch-manipulation items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                    type="submit"
+                    disabled={currentLoading}
+                    className="flex min-h-11 flex-1 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-xl bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-6"
                   >
-                    <CircleX className="h-4 w-4 shrink-0" aria-hidden />
-                    <span className="hidden sm:inline">{t('cancelAnalyze')}</span>
+                    {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('analyze')}
                   </button>
-                )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between sm:hidden">
+                <p className="text-[11px] font-medium text-gray-500">{t('deepAnalysisPipelineNote')}</p>
                 <button
-                  type="submit"
-                  disabled={currentLoading}
-                  className="flex min-h-11 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full bg-black px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
+                  type="button"
+                  onClick={() => setShowMobileHeaderOptions((prev) => !prev)}
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700"
                 >
-                  {currentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('analyze')}
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  {showMobileHeaderOptions
+                    ? locale === 'en'
+                      ? 'Hide options'
+                      : '옵션 숨기기'
+                    : locale === 'en'
+                      ? 'Options'
+                      : '옵션'}
                 </button>
               </div>
-            </div>
-              {hasYtApiKey && (
-              <label
-                className="flex cursor-pointer items-start gap-2.5 px-1 text-left text-xs leading-snug text-gray-600 md:items-center"
-                title={t('factsOnlyTooltip')}
-              >
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-red-600 focus:ring-red-500 md:mt-0"
-                  checked={factsOnlyMode}
-                  onChange={(e) => setFactsOnlyMode(e.target.checked)}
-                />
-                <span>
-                  <span className="font-medium text-gray-700">{t('factsOnlyTitle')}</span>
-                  <span className="text-gray-500"> {t('factsOnlyHint')}</span>
-                </span>
-              </label>
-            )}
-              {locale === 'ko' && (
-              <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-gray-600">
-                <label className="flex items-center gap-2">
-                  <span className="font-medium text-gray-700">{t('koreanToneTitle')}</span>
-                  <select
-                    value={koreanNaturalnessTone}
-                    onChange={(e) => setKoreanNaturalnessTone(e.target.value as KoreanNaturalnessTone)}
-                    className="min-h-9 rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:ring-2 focus:ring-red-500"
+
+              <div className={cn('space-y-2.5', !showMobileHeaderOptions && 'hidden sm:block')}>
+                {hasYtApiKey && (
+                  <label
+                    className="flex cursor-pointer items-start gap-2.5 px-1 text-left text-xs leading-snug text-gray-600 md:items-center"
+                    title={t('factsOnlyTooltip')}
                   >
-                    <option value="default">{t('koreanToneDefault')}</option>
-                    <option value="formal">{t('koreanToneFormal')}</option>
-                    <option value="casual">{t('koreanToneCasual')}</option>
-                  </select>
-                </label>
-                <label className="flex items-center gap-2">
-                  <span className="font-medium text-gray-700">{t('koreanIntensityTitle')}</span>
-                  <select
-                    value={koreanNaturalnessIntensity}
-                    onChange={(e) =>
-                      setKoreanNaturalnessIntensity(e.target.value as KoreanNaturalnessIntensity)
-                    }
-                    className="min-h-9 rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:ring-2 focus:ring-red-500"
-                  >
-                    <option value="low">{t('koreanIntensityLow')}</option>
-                    <option value="medium">{t('koreanIntensityMedium')}</option>
-                    <option value="high">{t('koreanIntensityHigh')}</option>
-                  </select>
-                </label>
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-red-600 focus:ring-red-500 md:mt-0"
+                      checked={factsOnlyMode}
+                      onChange={(e) => setFactsOnlyMode(e.target.checked)}
+                    />
+                    <span>
+                      <span className="font-medium text-gray-700">{t('factsOnlyTitle')}</span>
+                      <span className="text-gray-500"> {t('factsOnlyHint')}</span>
+                    </span>
+                  </label>
+                )}
+                {locale === 'ko' && (
+                  <div className="flex flex-col gap-2 px-1 text-xs text-gray-600 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+                    <label className="flex items-center gap-2">
+                      <span className="font-medium text-gray-700">{t('koreanToneTitle')}</span>
+                      <select
+                        value={koreanNaturalnessTone}
+                        onChange={(e) => setKoreanNaturalnessTone(e.target.value as KoreanNaturalnessTone)}
+                        className="min-h-9 rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:ring-2 focus:ring-red-500"
+                      >
+                        <option value="default">{t('koreanToneDefault')}</option>
+                        <option value="formal">{t('koreanToneFormal')}</option>
+                        <option value="casual">{t('koreanToneCasual')}</option>
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <span className="font-medium text-gray-700">{t('koreanIntensityTitle')}</span>
+                      <select
+                        value={koreanNaturalnessIntensity}
+                        onChange={(e) =>
+                          setKoreanNaturalnessIntensity(e.target.value as KoreanNaturalnessIntensity)
+                        }
+                        className="min-h-9 rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:ring-2 focus:ring-red-500"
+                      >
+                        <option value="low">{t('koreanIntensityLow')}</option>
+                        <option value="medium">{t('koreanIntensityMedium')}</option>
+                        <option value="high">{t('koreanIntensityHigh')}</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
               </div>
-            )}
             </form>
           ) : (
-            <div className="w-full md:max-w-xl md:flex-1">
-              <div className="rounded-2xl border border-violet-100 bg-violet-50/70 px-4 py-3 text-sm text-violet-800">
-                {t('betaTabPlaceholder')}
-              </div>
+            <div className="rounded-2xl border border-violet-100 bg-violet-50/70 px-4 py-3 text-sm text-violet-800">
+              {t('betaTabPlaceholder')}
             </div>
           )}
         </div>
